@@ -35,7 +35,7 @@ def get_id_mappings(download=False, action: Union[Literal['pdb'], Literal['unipr
         subprocess.run(cmd, shell=True, check=True)
     with gzip.open('idmapping_selected.tab.gz', 'r') as id_mapping:
         for line in id_mapping:
-            datum = line.split('\t')
+            datum = line.decode().split('\t')
             try:
                 if action == 'uniprot':
                     print(datum[0], datum[5])
