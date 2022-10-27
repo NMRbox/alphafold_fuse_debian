@@ -4,6 +4,9 @@ import os
 import sqlite3
 import subprocess
 import multiprocessing
+import tarfile
+from typing import Union, Literal
+from typing_extensions import LiteralString
 
 
 def get_files(root_dir: str):
@@ -14,28 +17,32 @@ def get_files(root_dir: str):
                 taxonomy_id = entry.name.split('-')[2]
                 print(f'Working on... {taxonomy_id}')
 
-                data = subprocess.check_output(['/usr/bin/tar', '--list', '-f', entry.path])
-                for file in data.decode().split('\n'):
-                    if file.endswith('-F1-model_v3.cif.gz'):
-                        yield taxonomy_id, file.replace('-F1-model_v3.cif.gz', '')
+                # data = subprocess.check_output(['/usr/bin/tar', '--list', '-f', entry.path])
+                # for file in data.decode().split('\n'):
+                #     if file.endswith('-F1-model_v3.cif.gz'):
+                #         yield taxonomy_id, file.replace('-F1-model_v3.cif.gz', '')
 
-                # with tarfile.open(entry.path) as tf:
-                #     for file in tf:
-                #         if file.name.endswith('-F1-model_v3.cif.gz'):
-                #             yield taxonomy_id, file.name.replace('-F1-model_v3.cif.gz', '')
+                with tarfile.open(entry.path) as tf:
+                    for file in tf.getmembers():
+                        if file.name.endswith('-F1-model_v3.cif.gz'):
+                            yield taxonomy_id, file.name.replace('-F1-model_v3.cif.gz', '')
 
 
-def get_pdb_mappings(download=False):
-    if not os.path.exists('idmapping.pdb') or download:
+def get_id_mappings(download=False, action: Union[Literal['pdb'], Literal['uniprot']] = 'uniprot'):
+    if not os.path.exists('idmapping_selected.tab') or download:
         print("Downloading Uniprot<->PDB id mapping file...")
-        url = 'https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/idmapping.dat.gz'
-        cmd = f'curl {url} | gzip -dc | grep PDB > idmapping.pdb'
+        url = 'https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/idmapping_selected.tab.gz'
+        cmd = f'curl {url} | gzip -dc > idmapping_selected.tab'
         subprocess.run(cmd, shell=True, check=True)
-    with open('idmapping.pdb', 'r') as pdb_records:
-        for line in pdb_records:
-            datum = line.split()
+    with open('idmapping_selected.tab', 'r') as id_mapping:
+        for line in id_mapping:
+            datum = line.split('\t')
             try:
-                yield datum[2], datum[0]
+                if action == 'uniprot':
+                    yield datum[0], datum[5]
+                elif action == 'pdb':
+                    for pdb in [_.split(":")[0] for _ in datum[12].split('; ')]:
+                        yield pdb, datum[0]
             except IndexError:
                 break
 
@@ -47,8 +54,8 @@ def create_or_update_sqlite(args: argparse.Namespace):
         # Set up taxonomy<->uniprot DB
         cursor.execute('DROP TABLE IF EXISTS taxonomy_tmp;')
         cursor.execute('CREATE TABLE taxonomy_tmp (taxonomy_id text, uniprot_id text);')
-        cursor.executemany("INSERT INTO taxonomy_tmp(taxonomy_id, uniprot_id) values (?,?)",
-                           get_files(args.alphafold_path))
+        cursor.executemany("INSERT INTO taxonomy_tmp(uniprot_id, taxonomy_id) values (?,?)",
+                           get_id_mappings(args.download_pdb, 'uniprot'))
         cursor.execute('DROP INDEX IF EXISTS uni_index;')
         cursor.execute('CREATE INDEX uni_index ON taxonomy_tmp(uniprot_id, taxonomy_id);')
         cursor.execute('DROP TABLE IF EXISTS taxonomy;')
@@ -58,7 +65,8 @@ def create_or_update_sqlite(args: argparse.Namespace):
         # Set up the PDB<->uniprot DB
         cursor.execute('DROP TABLE IF EXISTS pdb_tmp;')
         cursor.execute('CREATE TABLE pdb_tmp (pdb_id text, uniprot_id text);')
-        cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)", get_pdb_mappings(args.download_pdb))
+        cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)",
+                           get_id_mappings(args.download_pdb, 'pdb'))
         cursor.execute('DROP INDEX IF EXISTS pdb_index;')
         cursor.execute('CREATE INDEX pdb_index ON pdb_tmp (pdb_id, uniprot_id);')
         cursor.execute('DROP TABLE IF EXISTS pdb;')
