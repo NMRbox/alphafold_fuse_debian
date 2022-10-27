@@ -51,6 +51,7 @@ class SQLReader:
     def __enter__(self):
         self.sql_connection = sqlite3.connect(self.sql_file_path)
         self.cursor = self.sql_connection.cursor()
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.cursor.close()
@@ -69,9 +70,6 @@ class AlphaFoldFS(Fuse):
 
     def __init__(self, *args, **kw):
         Fuse.__init__(self, *args, **kw)
-        self.sqlpath = 'alphafold.sqlite'
-        self.alphafold_dir = '/extra/alphafoldorig/proteomes/'
-        print(self.sqlpath, self.alphafold_dir)
 
     # def getattr(self, path):
     #     st = MyStat()
@@ -87,7 +85,7 @@ class AlphaFoldFS(Fuse):
     #     return st
 
     def getattr(self, path):
-        print('readdir', path)
+        print('getattr', path)
         return os.lstat("." + path)
 
     def readdir(self, path, offset):
@@ -95,9 +93,8 @@ class AlphaFoldFS(Fuse):
             for r in '.', '..', 'uniprot', 'pdb', 'taxonomy':
                 yield fuse.Direntry(r)
             return
-        if path == 'pdb':
-            print('readdir', path, offset)
-            return
+        for r in '.', '..':
+            yield fuse.Direntry(r)
 
     def open(self, path, flags):
         if path != hello_path:
