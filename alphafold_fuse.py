@@ -67,9 +67,12 @@ class AlphaFoldFS(Fuse):
         return os.lstat("." + path)
 
     def readdir(self, path, offset):
-        print('readdir', path, offset)
-        for r in '.', '..', hello_path[1:]:
-            yield fuse.Direntry(r)
+        if path and not offset:
+            for r in '.', '..', 'uniprot', 'pdb', 'taxonomy':
+                yield fuse.Direntry(r)
+        else:
+            print('readdir', path, offset)
+            return
 
     def open(self, path, flags):
         if path != hello_path:
