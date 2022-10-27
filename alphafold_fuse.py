@@ -90,8 +90,6 @@ class AlphaFoldFS(Fuse):
             st = MyStat()
             st.st_mode = stat.S_IFDIR | 0o555
             st.st_nlink = 2
-            st.st_gid = os.getgid()
-            st.st_uid = os.getuid()
             return st
         if path.startwith('/uniprot/'):
             with SQLReader(self.sqlpath) as sql:
