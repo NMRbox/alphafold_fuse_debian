@@ -86,6 +86,8 @@ class AlphaFoldFS(Fuse):
 
     def getattr(self, path):
         print('getattr', path)
+        if path in ['/uniprot', '/pdb', '/taxonomy']:
+            return MyStat()
         return os.lstat("." + path)
 
     def readdir(self, path, offset):
