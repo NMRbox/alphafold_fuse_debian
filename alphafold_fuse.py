@@ -63,7 +63,11 @@ class SQLReader:
 
     def get_taxonomy_from_uniprot(self, uniprot):
         self.cursor.execute('SELECT taxonomy_id FROM taxonomy WHERE uniprot_id = %s', [uniprot])
-        return self.cursor.fetchone()[0]
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        else:
+            return None
 
 
 class AlphaFoldFS(Fuse):
@@ -94,12 +98,16 @@ class AlphaFoldFS(Fuse):
             st.st_uid = os.getuid()
             return st
         if path.startswith('/uniprot/'):
-            #with SQLReader(self.sqlpath) as sql:
-            st = MyStat()
-            st.st_mode = stat.S_IFREG | 0o444
-            st.st_nlink = 1
-            st.st_size = len(self.buf)
-            return st
+            with SQLReader(self.sqlpath) as sql:
+                taxonomy = sql.get_taxonomy_from_uniprot(path.split('/')[2])
+                if taxonomy:
+                    st = MyStat()
+                    st.st_mode = stat.S_IFREG | 0o444
+                    st.st_nlink = 1
+                    st.st_size = 1 #TODO: Look this up?
+                    return st
+                else:
+                    return -errno.ENOENT
         return os.lstat("." + path)
 
     def readdir(self, path, offset):
