@@ -58,11 +58,11 @@ class SQLReader:
         self.sql_connection.close()
 
     def get_uniprot_from_taxonomy(self, taxonomy):
-        self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE taxonomy_id = %s', [taxonomy])
+        self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE taxonomy_id = ?', [taxonomy])
         return [_[0] for _ in self.cursor.fetchall()]
 
     def get_taxonomy_from_uniprot(self, uniprot):
-        self.cursor.execute('SELECT taxonomy_id FROM taxonomy WHERE uniprot_id = %s', [uniprot])
+        self.cursor.execute('SELECT taxonomy_id FROM taxonomy WHERE uniprot_id = ?', [uniprot])
         result = self.cursor.fetchone()
         if result:
             return result[0]
