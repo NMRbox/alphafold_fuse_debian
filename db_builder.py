@@ -2,8 +2,8 @@
 import argparse
 import os
 import sqlite3
-import tarfile
 import subprocess
+import multiprocessing
 
 
 def get_files(root_dir: str):
@@ -11,12 +11,18 @@ def get_files(root_dir: str):
     with os.scandir(root_dir) as it:
         for entry in it:
             if entry.name.endswith('.tar'):
-                taxonomy_id = entry.name.replace('proteome-tax_id-', '').replace('-0_v3.tar', '')
+                taxonomy_id = entry.name.split('-')[2]
                 print(f'Working on... {taxonomy_id}')
-                with tarfile.TarFile(entry.path) as tf:
-                    for file in tf:
-                        if file.name.endswith('-F1-model_v3.cif.gz'):
-                            yield taxonomy_id, file.name.replace('-F1-model_v3.cif.gz', '')
+
+                data = subprocess.check_output(['/usr/bin/tar', '--list', '-f', entry.path])
+                for file in data.decode().split('\n'):
+                    if file.endswith('-F1-model_v3.cif.gz'):
+                        yield taxonomy_id, file.replace('-F1-model_v3.cif.gz', '')
+
+                # with tarfile.open(entry.path) as tf:
+                #     for file in tf:
+                #         if file.name.endswith('-F1-model_v3.cif.gz'):
+                #             yield taxonomy_id, file.name.replace('-F1-model_v3.cif.gz', '')
 
 
 def get_pdb_mappings(download=False):
