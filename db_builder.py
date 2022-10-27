@@ -47,7 +47,7 @@ def get_id_mappings(download=False, action: Union[Literal['pdb'], Literal['unipr
 
 
 def create_or_update_sqlite(args: argparse.Namespace):
-    with sqlite3.connect('alphafold.sqlite') as sqlite_conn:
+    with sqlite3.connect(args.sqlite_location) as sqlite_conn:
         cursor = sqlite_conn.cursor()
 
         # Set up taxonomy<->uniprot DB
