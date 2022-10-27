@@ -56,7 +56,7 @@ def create_or_update_sqlite(args: argparse.Namespace):
         cursor.executemany("INSERT INTO taxonomy_tmp(uniprot_id, taxonomy_id) values (?,?)",
                            get_id_mappings(args.download_pdb, 'uniprot'))
         cursor.execute('DROP INDEX IF EXISTS uni_index;')
-        cursor.execute('CREATE INDEX uni_index ON taxonomy_tmp(uniprot_id, taxonomy_id);')
+        cursor.execute('CREATE UNIQUE INDEX uni_index ON taxonomy_tmp(uniprot_id, taxonomy_id);')
         cursor.execute('DROP TABLE IF EXISTS taxonomy;')
         cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
         sqlite_conn.commit()
@@ -68,7 +68,7 @@ def create_or_update_sqlite(args: argparse.Namespace):
         cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)",
                            get_id_mappings(args.download_pdb, 'pdb'))
         cursor.execute('DROP INDEX IF EXISTS pdb_index;')
-        cursor.execute('CREATE INDEX pdb_index ON pdb_tmp (pdb_id, uniprot_id);')
+        cursor.execute('CREATE UNIQUE INDEX pdb_index ON pdb_tmp (pdb_id, uniprot_id);')
         cursor.execute('DROP TABLE IF EXISTS pdb;')
         cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
         sqlite_conn.commit()
