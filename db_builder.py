@@ -38,10 +38,10 @@ def get_id_mappings(download=False, action: Union[Literal['pdb'], Literal['unipr
             datum = line.decode().split('\t')
             try:
                 if action == 'uniprot':
-                    print(datum[0], datum[5])
-                    #yield datum[0], datum[5]
+                    print(datum[0], datum[12])
+                    yield datum[0], datum[12]
                 elif action == 'pdb':
-                    for pdb in [_.split(":")[0] for _ in datum[12].split('; ')]:
+                    for pdb in [_.split(":")[0] for _ in datum[5].split('; ')]:
                         #yield pdb, datum[0]
                         print(pdb, datum[0])
             except IndexError:
