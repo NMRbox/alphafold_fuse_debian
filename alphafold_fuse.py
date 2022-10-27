@@ -88,9 +88,15 @@ class AlphaFoldFS(Fuse):
         print('getattr', path)
         if path in ['/uniprot', '/pdb', '/taxonomy']:
             st = MyStat()
-            st.st_mode = stat.S_IFDIR | 0o755
+            st.st_mode = stat.S_IFDIR | 0o555
             st.st_nlink = 2
+            st.st_gid = os.getgid()
+            st.st_uid = os.getuid()
             return st
+        if path.startwith('/uniprot/'):
+            with SQLReader(self.sqlpath) as sql:
+                for result in sql.get_taxonomy_from_uniprot(path.split('/')[2]):
+                    yield fuse.Direntry(result)
         return os.lstat("." + path)
 
     def readdir(self, path, offset):
