@@ -38,12 +38,10 @@ def get_id_mappings(download=False, action: Union[Literal['pdb'], Literal['unipr
             datum = line.decode().split('\t')
             try:
                 if action == 'uniprot':
-                    print(datum[0], datum[12])
-                    #yield datum[0], datum[12]
+                    yield datum[0], datum[12]
                 elif action == 'pdb':
                     for pdb in [_.split(":")[0] for _ in datum[5].split('; ')]:
-                        #yield pdb, datum[0]
-                        print(pdb, datum[0])
+                        yield pdb, datum[0]
             except IndexError:
                 break
 
@@ -94,5 +92,4 @@ if __name__ == '__main__':
                         help='Force re-download the PDB index before processing')
     args = parser.parse_args()
 
-    #create_or_update_sqlite(args)
-    get_id_mappings(args.download_pdb)
+    create_or_update_sqlite(args)
