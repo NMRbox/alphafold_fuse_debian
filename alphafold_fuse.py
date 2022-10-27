@@ -69,7 +69,9 @@ class AlphaFoldFS(Fuse):
 
     def __init__(self, *args, **kw):
         Fuse.__init__(self, *args, **kw)
-        print(self.parser, self.flags, self.fuse_args)
+        self.sqlpath = 'alphafold.sqlite'
+        self.alphafold_dir = '/extra/alphafoldorig/proteomes/'
+        print(self.sqlpath, self.alphafold_dir)
 
     # def getattr(self, path):
     #     st = MyStat()
@@ -120,7 +122,7 @@ class AlphaFoldFS(Fuse):
 
 def main():
     usage = """
-    Userspace nullfs-alike: mirror the filesystem tree from some point on.
+    Userspace AlphaFold archive decompressing file system.
     """ + Fuse.fusage
 
     server = AlphaFoldFS(version="%prog " + fuse.__version__,
@@ -134,7 +136,6 @@ def main():
                              default='/extra/alphafoldorig/proteomes/alphafold.sqlite',
                              help="Where to load metadata from [default: %default]")
     server.parse(values=server, errex=1)
-
     server.main()
 
 
