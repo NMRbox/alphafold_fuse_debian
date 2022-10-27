@@ -47,22 +47,27 @@ class AlphaFoldFS(Fuse):
 
     def __init__(self, *args, **kw):
         Fuse.__init__(self, *args, **kw)
-        self.root = '/'
+        print(args)
+
+    # def getattr(self, path):
+    #     st = MyStat()
+    #     if path == '/':
+    #         st.st_mode = stat.S_IFDIR | 0o755
+    #         st.st_nlink = 2
+    #     elif path == hello_path:
+    #         st.st_mode = stat.S_IFREG | 0o444
+    #         st.st_nlink = 1
+    #         st.st_size = len(hello_str)
+    #     else:
+    #         return -errno.ENOENT
+    #     return st
 
     def getattr(self, path):
-        st = MyStat()
-        if path == '/':
-            st.st_mode = stat.S_IFDIR | 0o755
-            st.st_nlink = 2
-        elif path == hello_path:
-            st.st_mode = stat.S_IFREG | 0o444
-            st.st_nlink = 1
-            st.st_size = len(hello_str)
-        else:
-            return -errno.ENOENT
-        return st
+        print('readdir', path)
+        return os.lstat("." + path)
 
     def readdir(self, path, offset):
+        print('readdir', path, offset)
         for r in '.', '..', hello_path[1:]:
             yield fuse.Direntry(r)
 
@@ -74,6 +79,7 @@ class AlphaFoldFS(Fuse):
             return -errno.EACCES
 
     def read(self, path, size, offset):
+        print('read', path, size, offset)
         if path != hello_path:
             return -errno.ENOENT
         slen = len(hello_str)
@@ -95,16 +101,13 @@ def main():
                          usage=usage,
                          dash_s_do='setsingle')
 
-    server.parser.add_option(mountopt="root", metavar="PATH", default='/extra/alphafoldorig/proteomes/',
-                             help="mirror filesystem from under PATH [default: %default]")
+    server.parser.add_option(mountopt="alphafold_dir", metavar="ALPHAFOLD_PATH",
+                             default='/extra/alphafoldorig/proteomes/',
+                             help="Source of AlphaFold tar files [default: %default]")
+    server.parser.add_option(mountopt="sqlpath", metavar="SQL_PATH",
+                             default='/extra/alphafoldorig/proteomes/alphafold.sqlite',
+                             help="Where to load metadata from [default: %default]")
     server.parse(values=server, errex=1)
-
-    try:
-        if server.fuse_args.mount_expected():
-            os.chdir(server.root)
-    except OSError:
-        print("Can't enter root of underlying filesystem", file=sys.stderr)
-        sys.exit(1)
 
     server.main()
 
