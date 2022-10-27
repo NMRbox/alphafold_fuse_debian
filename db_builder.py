@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import gzip
 import os
 import sqlite3
 import subprocess
@@ -27,20 +28,22 @@ def get_files(root_dir: str):
 
 
 def get_id_mappings(download=False, action: Union[Literal['pdb'], Literal['uniprot']] = 'uniprot'):
-    if not os.path.exists('idmapping_selected.tab') or download:
+    if not os.path.exists('idmapping_selected.tab.gz') or download:
         print("Downloading Uniprot<->PDB id mapping file...")
         url = 'https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/idmapping_selected.tab.gz'
-        cmd = f'curl {url} | gzip -dc > idmapping_selected.tab'
+        cmd = f'curl -z idmapping_selected.tab.gz -o idmapping_selected.tab.gz {url}'
         subprocess.run(cmd, shell=True, check=True)
-    with open('idmapping_selected.tab', 'r') as id_mapping:
+    with gzip.open('idmapping_selected.tab.gz', 'r') as id_mapping:
         for line in id_mapping:
             datum = line.split('\t')
             try:
                 if action == 'uniprot':
-                    yield datum[0], datum[5]
+                    print(datum[0], datum[5])
+                    #yield datum[0], datum[5]
                 elif action == 'pdb':
                     for pdb in [_.split(":")[0] for _ in datum[12].split('; ')]:
-                        yield pdb, datum[0]
+                        #yield pdb, datum[0]
+                        print(pdb, datum[0])
             except IndexError:
                 break
 
@@ -76,14 +79,20 @@ def create_or_update_sqlite(args: argparse.Namespace):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('alphafold_path',
+    parser.add_argument('-a', '--alphafold-path',
                         action='store',
                         default='/extra/alphafoldorig/proteomes/',
                         help='Where the source AlphaFold proteomes folder is.')
+    parser.add_argument('-s', '--sql-file',
+                        action='store',
+                        dest='sqlite_location',
+                        default='alphafold.sqlite',
+                        help='Where to store the sqlite file.')
     parser.add_argument('-d', '--download',
                         action='store_true',
                         dest='download_pdb',
                         help='Force re-download the PDB index before processing')
     args = parser.parse_args()
 
-    create_or_update_sqlite(args)
+    #create_or_update_sqlite(args)
+    get_id_mappings(args.download_pdb)
