@@ -1,0 +1,2 @@
+# sudo apt-get install libfuse-dev before the following will work
+fuse-python==1.0.5
