@@ -3,10 +3,8 @@ import argparse
 import os
 import sqlite3
 import subprocess
-import multiprocessing
 import tarfile
 from typing import Union, Literal
-from typing_extensions import LiteralString
 
 
 def get_files(root_dir: str):
@@ -52,6 +50,7 @@ def create_or_update_sqlite(args: argparse.Namespace):
         cursor = sqlite_conn.cursor()
 
         # Set up taxonomy<->uniprot DB
+        print("Doing Uniprot<->Taxonomy ID")
         cursor.execute('DROP TABLE IF EXISTS taxonomy_tmp;')
         cursor.execute('CREATE TABLE taxonomy_tmp (taxonomy_id text, uniprot_id text);')
         cursor.executemany("INSERT INTO taxonomy_tmp(uniprot_id, taxonomy_id) values (?,?)",
@@ -63,6 +62,7 @@ def create_or_update_sqlite(args: argparse.Namespace):
         sqlite_conn.commit()
 
         # Set up the PDB<->uniprot DB
+        print("Doing PDB<->UniProt")
         cursor.execute('DROP TABLE IF EXISTS pdb_tmp;')
         cursor.execute('CREATE TABLE pdb_tmp (pdb_id text, uniprot_id text);')
         cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)",
