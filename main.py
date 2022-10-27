@@ -95,7 +95,7 @@ def main():
                          usage=usage,
                          dash_s_do='setsingle')
 
-    server.parser.add_option(mountopt="root", metavar="PATH", default='/',
+    server.parser.add_option(mountopt="root", metavar="PATH", default='/extra/alphafoldorig/proteomes/',
                              help="mirror filesystem from under PATH [default: %default]")
     server.parse(values=server, errex=1)
 
@@ -103,7 +103,7 @@ def main():
         if server.fuse_args.mount_expected():
             os.chdir(server.root)
     except OSError:
-        print("can't enter root of underlying filesystem", file=sys.stderr)
+        print("Can't enter root of underlying filesystem", file=sys.stderr)
         sys.exit(1)
 
     server.main()
