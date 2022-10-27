@@ -69,7 +69,7 @@ class AlphaFoldFS(Fuse):
 
     def __init__(self, *args, **kw):
         Fuse.__init__(self, *args, **kw)
-        print(args, kw)
+        print(self.parser, self.flags, self.fuse_args)
 
     # def getattr(self, path):
     #     st = MyStat()
