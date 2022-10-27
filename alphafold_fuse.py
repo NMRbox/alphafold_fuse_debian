@@ -8,6 +8,7 @@
 
 import errno
 import os
+import sqlite3
 import stat
 import sys
 
@@ -43,11 +44,32 @@ class MyStat(fuse.Stat):
         self.st_ctime = 0
 
 
+class SQLReader:
+    def __init__(self, sql_file_path):
+        self.sql_file_path = sql_file_path
+
+    def __enter__(self):
+        self.sql_connection = sqlite3.connect(self.sql_file_path)
+        self.cursor = self.sql_connection.cursor()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cursor.close()
+        self.sql_connection.close()
+
+    def get_uniprot_from_taxonomy(self, taxonomy):
+        self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE taxonomy_id = %s', [taxonomy])
+        return [_[0] for _ in self.cursor.fetchall()]
+
+    def get_taxonomy_from_uniprot(self, uniprot):
+        self.cursor.execute('SELECT taxonomy_id FROM taxonomy WHERE uniprot_id = %s', [uniprot])
+        return self.cursor.fetchone()[0]
+
+
 class AlphaFoldFS(Fuse):
 
     def __init__(self, *args, **kw):
         Fuse.__init__(self, *args, **kw)
-        print(args)
+        print(args, kw)
 
     # def getattr(self, path):
     #     st = MyStat()
@@ -67,10 +89,11 @@ class AlphaFoldFS(Fuse):
         return os.lstat("." + path)
 
     def readdir(self, path, offset):
-        if path and not offset:
+        if path == "/":
             for r in '.', '..', 'uniprot', 'pdb', 'taxonomy':
                 yield fuse.Direntry(r)
-        else:
+            return
+        if path == 'pdb':
             print('readdir', path, offset)
             return
 
