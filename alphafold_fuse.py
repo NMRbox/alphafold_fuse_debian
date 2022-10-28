@@ -129,8 +129,8 @@ class AlphaFoldFS(Fuse):
             else:
                 return -errno.ENOENT
 
-        return -errno.ENOENT
-        #return os.lstat("." + path)
+        #return -errno.ENOENT
+        return os.lstat("." + path)
 
     def readdir(self, path, offset):
         logging.debug(f'readdir {path} {offset}')
