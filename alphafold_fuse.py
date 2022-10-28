@@ -8,6 +8,7 @@ import os
 import sqlite3
 import stat
 import tarfile
+from string import ascii_uppercase
 
 import fuse
 from fuse import Fuse
@@ -150,6 +151,16 @@ class AlphaFoldFS(Fuse):
                         yield fuse.Direntry(_)
             else:
                 return -errno.ENOENT
+        if pc[0] == 'uniprot':
+            if len(pc) == 1:
+                for letter in ascii_uppercase:
+                    yield fuse.Direntry(letter)
+            if len(pc) == 2:
+                for letter in ascii_uppercase:
+                    yield fuse.Direntry(letter)
+            if len(pc) == 3:
+                for _ in 'would', 'look', 'up':
+                    yield _
 
     def open(self, path, flags):
         logging.debug(f'open {path} {flags}')
