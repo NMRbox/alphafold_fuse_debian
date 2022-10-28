@@ -103,7 +103,7 @@ class AlphaFoldFS(Fuse):
                 return -errno.ENOENT
 
     def getattr(self, path):
-        logging.debug('getattr', path)
+        logging.debug(f'getattr {path}')
 
         if path in ['/uniprot', '/pdb', '/taxonomy']:
             st = MyStat()
@@ -133,7 +133,7 @@ class AlphaFoldFS(Fuse):
         #return os.lstat("." + path)
 
     def readdir(self, path, offset):
-        logging.debug('readdir', path, offset)
+        logging.debug(f'readdir {path} {offset}')
         if path == "/":
             for r in '.', '..', 'uniprot', 'pdb', 'taxonomy':
                 yield fuse.Direntry(r)
@@ -147,7 +147,7 @@ class AlphaFoldFS(Fuse):
                 return -errno.ENOENT
 
     def open(self, path, flags):
-        logging.debug('open', path, flags)
+        logging.debug(f'open {path} {flags}')
         # Only allow reading
         accmode = os.O_RDONLY | os.O_WRONLY | os.O_RDWR
         if (flags & accmode) != os.O_RDONLY:
@@ -164,7 +164,7 @@ class AlphaFoldFS(Fuse):
         return buf
 
     def read(self, path, size, offset):
-        logging.debug('read', path, size, offset)
+        logging.debug(f'read {path} {size} {offset}')
         # TODO: Implement check that path isn't one we don't know
         # just in case something buggy calls open before calling getent. Return:
         #     return -errno.ENOENT
