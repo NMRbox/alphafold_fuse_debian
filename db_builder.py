@@ -59,8 +59,8 @@ def index_files(root_dir: str):
                 if entry.name.endswith('.tar'):
                     yield entry.name, entry.path
 
-    with multiprocessing.Pool() as p:
-        map = p.imap_unordered(get_files_from_tar, get_files_as_iterator(), 50)
+    with multiprocessing.Pool(processes=250) as p:
+        map = p.imap_unordered(get_files_from_tar, get_files_as_iterator(), 500)
         for result in map:
             for row in result:
                 yield row
@@ -96,8 +96,9 @@ def create_or_update_sqlite(args: argparse.Namespace):
                        'size numeric);')
         cursor.executemany("INSERT INTO taxonomy_tmp(taxonomy_id, chunk, uniprot_id, offset, size) values (?,?,?,?,?)",
                            index_files(args.alphafold_path))
-        cursor.execute('DROP INDEX IF EXISTS uni_index;')
+        sqlite_conn.commit()
         print('Building index...')
+        cursor.execute('DROP INDEX IF EXISTS uni_index;')
         cursor.execute('CREATE UNIQUE INDEX uni_index ON taxonomy_tmp(uniprot_id, taxonomy_id, chunk);')
         cursor.execute('DROP TABLE IF EXISTS taxonomy;')
         cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
