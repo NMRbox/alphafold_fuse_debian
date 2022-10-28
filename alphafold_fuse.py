@@ -174,6 +174,7 @@ class AlphaFoldFS(Fuse):
                             size = slen - offset
                         print(f'Getting data from offset {offset} of size {size}. Data length: {slen}')
                         buf = data[offset:offset + size]
+                        print('Sending...', buf)
                     else:
                         buf = b''
                     return buf
