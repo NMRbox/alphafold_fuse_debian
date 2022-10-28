@@ -88,6 +88,20 @@ class AlphaFoldFS(Fuse):
     def prepare_sqlite(self):
         self.sqlite = SQLReader(self.sqlpath)
 
+    def _get_attr_for_uniprot(self, unprot_id: str):
+        with self.sqlite as sql:
+            taxonomy = sql.get_taxonomy_from_uniprot(unprot_id)
+            if taxonomy:
+                metadata, data = get_uniprot(self.alphafold_dir, unprot_id, taxonomy)
+                st = MyStat()
+                st.st_mode = stat.S_IFREG | 0o444
+                st.st_nlink = 1
+                st.st_size = len(data)
+                st.st_mtime = metadata.mtime
+                return st
+            else:
+                return -errno.ENOENT
+
     def getattr(self, path):
         logging.debug('getattr', path)
 
@@ -100,25 +114,37 @@ class AlphaFoldFS(Fuse):
             return st
         pc = path.split('/')[1:]
         if pc[0] == 'uniprot' and len(pc) == 2:
-            with self.sqlite as sql:
-                taxonomy = sql.get_taxonomy_from_uniprot(pc[1])
-                if taxonomy:
-                    metadata, data = get_uniprot(self.alphafold_dir, pc[1], taxonomy)
-                    st = MyStat()
-                    st.st_mode = stat.S_IFREG | 0o444
-                    st.st_nlink = 1
-                    st.st_size = len(data)
-                    st.st_mtime = metadata.mtime
-                    return st
-                else:
-                    return -errno.ENOENT
-        return os.lstat("." + path)
+            return self._get_attr_for_uniprot(pc[1])
+        if pc[0] == 'taxonomy':
+            if len(pc) == 2:
+                # TODO: Check that pc[1] is a valid taxon
+                st = MyStat()
+                st.st_mode = stat.S_IFREG | 0o444
+                st.st_nlink = 1
+                st.st_gid = os.getgid()
+                st.st_uid = os.getuid()
+                return st
+            if len(pc) == 3:
+                return self._get_attr_for_uniprot(pc[2])
+            else:
+                return -errno.ENOENT
+
+        return -errno.ENOENT
+        #return os.lstat("." + path)
 
     def readdir(self, path, offset):
         logging.debug('readdir', path, offset)
         if path == "/":
             for r in '.', '..', 'uniprot', 'pdb', 'taxonomy':
                 yield fuse.Direntry(r)
+        pc = path.split('/')[1:]
+        if pc[0] == 'taxonomy':
+            if len(pc) == 2:
+                with self.sqlite as sql:
+                    for _ in sql.get_uniprot_from_taxonomy(pc[1]):
+                        yield fuse.Direntry(_)
+            else:
+                return -errno.ENOENT
 
     def open(self, path, flags):
         logging.debug('open', path, flags)
@@ -177,4 +203,5 @@ def main():
 
 
 if __name__ == '__main__':
+    logging.getLogger().setLevel(logging.DEBUG)
     main()
