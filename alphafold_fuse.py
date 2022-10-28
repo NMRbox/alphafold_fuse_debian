@@ -38,6 +38,7 @@ def get_uniprot(alphafold_path: str, uniprot_id: str, taxonomy_id: str):
     chunk = 0
     tar_path = os.path.join(alphafold_path, f'proteome-tax_id-{taxonomy_id}-{chunk}_v3.tar')
     while os.path.isfile(tar_path):
+        print("Reading ", tar_path)
         with tarfile.open(tar_path) as tf:
             for member in tf:
                 if member.name == f'AF-{uniprot_id}-F1-model_v3.cif.gz':
@@ -171,6 +172,7 @@ class AlphaFoldFS(Fuse):
                     if offset < slen:
                         if offset + size > slen:
                             size = slen - offset
+                        print(f'Getting data from offset {offset} of size {size}. Data length: {slen}')
                         buf = data[offset:offset + size]
                     else:
                         buf = b''
