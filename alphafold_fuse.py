@@ -34,7 +34,7 @@ def get_uniprot(alphafold_path: str, uniprot_id: str, taxonomy_id: str):
         tar_path = os.path.join(alphafold_path, f'proteome-tax_id-{taxonomy_id}-{chunk}_v3.tar')
 
     # Didn't find the file - had to seek the entire archive
-    return None
+    return None, None
 
 
 class MyStat(fuse.Stat):
@@ -88,19 +88,20 @@ class AlphaFoldFS(Fuse):
     def prepare_sqlite(self):
         self.sqlite = SQLReader(self.sqlpath)
 
-    def _get_attr_for_uniprot(self, unprot_id: str):
-        with self.sqlite as sql:
-            taxonomy = sql.get_taxonomy_from_uniprot(unprot_id)
-            if taxonomy:
-                metadata, data = get_uniprot(self.alphafold_dir, unprot_id, taxonomy)
-                st = MyStat()
-                st.st_mode = stat.S_IFREG | 0o444
-                st.st_nlink = 1
-                st.st_size = len(data)
-                st.st_mtime = metadata.mtime
-                return st
-            else:
-                return -errno.ENOENT
+    def _get_attr_for_uniprot(self, unprot_id: str, taxonomy_id: str = None):
+        if taxonomy_id is None:
+            with self.sqlite as sql:
+                taxonomy_id = sql.get_taxonomy_from_uniprot(unprot_id)
+        if taxonomy_id:
+            metadata, data = get_uniprot(self.alphafold_dir, unprot_id, taxonomy_id)
+            st = MyStat()
+            st.st_mode = stat.S_IFREG | 0o444
+            st.st_nlink = 1
+            st.st_size = len(data)
+            st.st_mtime = metadata.mtime
+            return st
+        else:
+            return -errno.ENOENT
 
     def getattr(self, path):
         logging.debug(f'getattr {path}')
@@ -125,7 +126,7 @@ class AlphaFoldFS(Fuse):
                 st.st_uid = os.getuid()
                 return st
             if len(pc) == 3:
-                return self._get_attr_for_uniprot(pc[2])
+                return self._get_attr_for_uniprot(pc[2], pc[1])
             else:
                 return -errno.ENOENT
 
