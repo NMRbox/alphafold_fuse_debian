@@ -133,7 +133,7 @@ class AlphaFoldFS(Fuse):
                     st = MyStat()
                     st.st_mode = stat.S_IFREG | 0o444
                     st.st_nlink = 1
-                    st.st_size = metadata.size
+                    st.st_size = len(data)
                     st.st_mtime = metadata.mtime
                     return st
                 else:
