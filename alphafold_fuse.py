@@ -164,7 +164,6 @@ class AlphaFoldFS(Fuse):
 
         pc = path.split('/')[1:]
         if pc[0] == 'uniprot' and len(pc) == 2:
-            print('READING uniprot!')
             with self.sqlite as sql:
                 taxonomy = sql.get_taxonomy_from_uniprot(pc[1])
                 if taxonomy:
@@ -176,7 +175,6 @@ class AlphaFoldFS(Fuse):
                             size = slen - offset
                         print(f'Getting data from offset {offset} of size {size}. Data length: {slen}')
                         buf = data[offset:offset + size]
-                        print('Sending...', buf)
                     else:
                         buf = b''
                     return buf
