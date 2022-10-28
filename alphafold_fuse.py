@@ -183,6 +183,12 @@ class AlphaFoldFS(Fuse):
                     return self._send_from_buffer(data, size, offset)
                 else:
                     return -errno.ENOENT
+        if pc[0] == 'taxonomy':
+            if len(pc) == 3:
+                metadata, data = get_uniprot(self.alphafold_dir, pc[2], pc[1])
+                return self._send_from_buffer(data, size, offset)
+            else:
+                return -errno.ENOENT
 
         return -errno.ENOENT
 
