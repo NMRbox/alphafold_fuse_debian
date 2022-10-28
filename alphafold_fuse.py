@@ -1,26 +1,14 @@
 #!/usr/bin/env python
 
-#    Copyright (C) 2006  Andrew Straw  <strawman@astraw.com>
-#
-#    This program can be distributed under the terms of the GNU LGPL.
-#    See the file COPYING.
-#
-
 import errno
 import functools
 import gzip
+import logging
 import os
 import sqlite3
 import stat
-import sys
 import tarfile
 
-
-# pull in some spaghetti to make this stuff work without fuse-py being installed
-try:
-    import _find_fuse_parts
-except ImportError:
-    pass
 import fuse
 from fuse import Fuse
 
@@ -28,9 +16,6 @@ if not hasattr(fuse, '__version__'):
     raise RuntimeError("your fuse-py doesn't know of fuse.__version__, probably it's too old.")
 
 fuse.fuse_python_api = (0, 2)
-
-hello_path = '/hello'
-hello_str = b'Hello World!\n'
 
 
 @functools.lru_cache(1024)
@@ -84,6 +69,7 @@ class SQLReader:
     def get_uniprot_from_taxonomy(self, taxonomy):
         self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE taxonomy_id = ?', [taxonomy])
         return [_[0] for _ in self.cursor.fetchall()]
+
     @functools.lru_cache(1024)
     def get_taxonomy_from_uniprot(self, uniprot):
         self.cursor.execute('SELECT taxonomy_id FROM taxonomy WHERE uniprot_id = ?', [uniprot])
@@ -102,19 +88,8 @@ class AlphaFoldFS(Fuse):
     def prepare_sqlite(self):
         self.sqlite = SQLReader(self.sqlpath)
 
-    # def _get_expected_from_path(self, path: str, met):
-
-
     def getattr(self, path):
-
-
-        print('getattr', path)
-        if path == hello_path:
-            st = MyStat()
-            st.st_mode = stat.S_IFREG | 0o444
-            st.st_nlink = 1
-            st.st_size = len(hello_str)
-            return st
+        logging.debug('getattr', path)
 
         if path in ['/uniprot', '/pdb', '/taxonomy']:
             st = MyStat()
@@ -124,7 +99,6 @@ class AlphaFoldFS(Fuse):
             st.st_uid = os.getuid()
             return st
         pc = path.split('/')[1:]
-        print(pc)
         if pc[0] == 'uniprot' and len(pc) == 2:
             with self.sqlite as sql:
                 taxonomy = sql.get_taxonomy_from_uniprot(pc[1])
@@ -141,23 +115,30 @@ class AlphaFoldFS(Fuse):
         return os.lstat("." + path)
 
     def readdir(self, path, offset):
+        logging.debug('readdir', path, offset)
         if path == "/":
             for r in '.', '..', 'uniprot', 'pdb', 'taxonomy':
                 yield fuse.Direntry(r)
-            return
-        # for r in '.', '..':
-        #     yield fuse.Direntry(r)
-        #return
 
     def open(self, path, flags):
-        print('open', path, flags)
+        logging.debug('open', path, flags)
         # Only allow reading
         accmode = os.O_RDONLY | os.O_WRONLY | os.O_RDWR
         if (flags & accmode) != os.O_RDONLY:
             return -errno.EACCES
 
+    def _send_from_buffer(self, buffer: bytes, size, offset):
+        slen = len(buffer)
+        if offset < slen:
+            if offset + size > slen:
+                size = slen - offset
+            buf = buffer[offset:offset + size]
+        else:
+            buf = b''
+        return buf
+
     def read(self, path, size, offset):
-        print('read', path, size, offset)
+        logging.debug('read', path, size, offset)
         # TODO: Implement check that path isn't one we don't know
         # just in case something buggy calls open before calling getent. Return:
         #     return -errno.ENOENT
@@ -168,16 +149,7 @@ class AlphaFoldFS(Fuse):
                 taxonomy = sql.get_taxonomy_from_uniprot(pc[1])
                 if taxonomy:
                     metadata, data = get_uniprot(self.alphafold_dir, pc[1], taxonomy)
-
-                    slen = len(data)
-                    if offset < slen:
-                        if offset + size > slen:
-                            size = slen - offset
-                        print(f'Getting data from offset {offset} of size {size}. Data length: {slen}')
-                        buf = data[offset:offset + size]
-                    else:
-                        buf = b''
-                    return buf
+                    return self._send_from_buffer(data, size, offset)
                 else:
                     return -errno.ENOENT
 
