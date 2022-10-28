@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import sqlite3
 import subprocess
+import sys
 import tarfile
 from typing import Union, Literal
 
@@ -21,22 +22,27 @@ def round_to_512(number):
     return number + 512 - remainder
 
 
-def get_files_from_tar(entry: tarfile.TarInfo):
+def get_files_from_tar(argument):
+    name, path = argument
     offset = 0
-    split = entry.name.split('-')
+    split = name.split('-')
     taxonomy_id = split[2]
     chunk = split[3].split("_")[0]
     print(f'Working on... {taxonomy_id}-{chunk}')
 
-    data = subprocess.check_output(['/usr/bin/tar', '--list', '--verbose', '-f', entry.path])
+    files = []
+
+    data = subprocess.check_output(['/usr/bin/tar', '--list', '--verbose', '-f', path])
     for line in data.decode().split('\n'):
         parts = line.split()
         if parts:
             size = int(parts[2])
             if parts[5].endswith('-F1-model_v3.cif.gz'):
-                yield taxonomy_id, chunk, parts[5].replace('-F1-model_v3.cif.gz', ''), offset, size
+                files.append([taxonomy_id, chunk, parts[5].replace('-F1-model_v3.cif.gz', ''), offset, size])
             offset += size + 512
             offset = round_to_512(offset)
+
+    return files
 
     # with tarfile.open(entry.path) as tf:
     #     for file in tf.getmembers():
@@ -47,11 +53,17 @@ def get_files_from_tar(entry: tarfile.TarInfo):
 
 def index_files(root_dir: str):
     # Populate DB
-    with os.scandir(root_dir) as it:
-        for entry in it:
-            if entry.name.endswith('.tar'):
-                for record in get_files_from_tar(entry):
-                    yield record
+    def get_files_as_iterator():
+        with os.scandir(root_dir) as it:
+            for entry in it:
+                if entry.name.endswith('.tar'):
+                    yield entry.name, entry.path
+
+    with multiprocessing.Pool() as p:
+        map = p.imap_unordered(get_files_from_tar, get_files_as_iterator(), 50)
+        for result in map:
+            for row in result:
+                yield row
 
 
 def get_id_mappings(download=False, action: Union[Literal['pdb'], Literal['uniprot']] = 'uniprot'):
@@ -91,17 +103,17 @@ def create_or_update_sqlite(args: argparse.Namespace):
         cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
         sqlite_conn.commit()
 
-        # # Set up the PDB<->uniprot DB
-        # print("Doing PDB<->UniProt")
-        # cursor.execute('DROP TABLE IF EXISTS pdb_tmp;')
-        # cursor.execute('CREATE TABLE pdb_tmp (pdb_id text, uniprot_id text);')
-        # cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)",
-        #                    get_id_mappings(args.download_pdb, 'pdb'))
-        # cursor.execute('DROP INDEX IF EXISTS pdb_index;')
-        # cursor.execute('CREATE UNIQUE INDEX pdb_index ON pdb_tmp (pdb_id, uniprot_id);')
-        # cursor.execute('DROP TABLE IF EXISTS pdb;')
-        # cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
-        # sqlite_conn.commit()
+        # Set up the PDB<->uniprot DB
+        print("Doing PDB<->UniProt")
+        cursor.execute('DROP TABLE IF EXISTS pdb_tmp;')
+        cursor.execute('CREATE TABLE pdb_tmp (pdb_id text, uniprot_id text);')
+        cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)",
+                           get_id_mappings(args.download_pdb, 'pdb'))
+        cursor.execute('DROP INDEX IF EXISTS pdb_index;')
+        cursor.execute('CREATE UNIQUE INDEX pdb_index ON pdb_tmp (pdb_id, uniprot_id);')
+        cursor.execute('DROP TABLE IF EXISTS pdb;')
+        cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
+        sqlite_conn.commit()
 
 
 if __name__ == '__main__':
