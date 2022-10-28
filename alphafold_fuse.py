@@ -20,6 +20,7 @@ fuse.fuse_python_api = (0, 2)
 
 @functools.lru_cache(1024)
 def get_uniprot(alphafold_path: str, uniprot_id: str, taxonomy_id: str):
+    logging.debug(f'Getting data for {alphafold_path} {uniprot_id} {taxonomy_id}')
     chunk = 0
     tar_path = os.path.join(alphafold_path, f'proteome-tax_id-{taxonomy_id}-{chunk}_v3.tar')
     while os.path.isfile(tar_path):
