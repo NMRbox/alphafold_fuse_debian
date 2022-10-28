@@ -43,7 +43,7 @@ def get_uniprot(alphafold_path: str, uniprot_id: str, taxonomy_id: str):
                 if member.name == f'AF-{uniprot_id}-F1-model_v3.cif.gz':
                     data = tf.extractfile(member)
                     with gzip.open(data) as uncompressed:
-                        return member, uncompressed
+                        return member, uncompressed.read()
         chunk += 1
         tar_path = os.path.join(alphafold_path, f'proteome-tax_id-{taxonomy_id}-{chunk}_v3.tar')
 
@@ -79,10 +79,11 @@ class SQLReader:
         self.cursor.close()
         self.sql_connection.close()
 
+    @functools.lru_cache(1024)
     def get_uniprot_from_taxonomy(self, taxonomy):
         self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE taxonomy_id = ?', [taxonomy])
         return [_[0] for _ in self.cursor.fetchall()]
-
+    @functools.lru_cache(1024)
     def get_taxonomy_from_uniprot(self, uniprot):
         self.cursor.execute('SELECT taxonomy_id FROM taxonomy WHERE uniprot_id = ?', [uniprot])
         result = self.cursor.fetchone()
@@ -96,6 +97,12 @@ class AlphaFoldFS(Fuse):
 
     def __init__(self, *args, **kw):
         Fuse.__init__(self, *args, **kw)
+
+    def prepare_sqlite(self):
+        self.sqlite = SQLReader(self.sqlpath)
+
+    # def _get_expected_from_path(self, path: str, met):
+
 
     def getattr(self, path):
 
@@ -118,7 +125,7 @@ class AlphaFoldFS(Fuse):
         pc = path.split('/')[1:]
         print(pc)
         if pc[0] == 'uniprot' and len(pc) == 2:
-            with SQLReader(self.sqlpath) as sql:
+            with self.sqlite as sql:
                 taxonomy = sql.get_taxonomy_from_uniprot(pc[1])
                 if taxonomy:
                     st = MyStat()
@@ -141,24 +148,37 @@ class AlphaFoldFS(Fuse):
 
     def open(self, path, flags):
         print('open', path, flags)
-        if path != hello_path:
-            return -errno.ENOENT
+        # Only allow reading
         accmode = os.O_RDONLY | os.O_WRONLY | os.O_RDWR
         if (flags & accmode) != os.O_RDONLY:
             return -errno.EACCES
 
     def read(self, path, size, offset):
         print('read', path, size, offset)
-        if path != hello_path:
-            return -errno.ENOENT
-        slen = len(hello_str)
-        if offset < slen:
-            if offset + size > slen:
-                size = slen - offset
-            buf = hello_str[offset:offset + size]
-        else:
-            buf = b''
-        return buf
+        # TODO: Implement check that path isn't one we don't know
+        # just in case something buggy calls open before calling getent. Return:
+        #     return -errno.ENOENT
+
+        pc = path.split('/')[1:]
+        if pc[0] == 'uniprot' and len(pc) == 2:
+            print('READING uniprot!')
+            with self.sqlite as sql:
+                taxonomy = sql.get_taxonomy_from_uniprot(pc[1])
+                if taxonomy:
+                    metadata, data = get_uniprot(self.alphafold_dir, pc[1], taxonomy)
+
+                    slen = len(data)
+                    if offset < slen:
+                        if offset + size > slen:
+                            size = slen - offset
+                        buf = data[offset:offset + size]
+                    else:
+                        buf = b''
+                    return buf
+                else:
+                    return -errno.ENOENT
+
+        return -errno.ENOENT
 
 
 def main():
@@ -177,6 +197,7 @@ def main():
                              default='/extra/alphafoldorig/proteomes/alphafold.sqlite',
                              help="Where to load metadata from [default: %default]")
     server.parse(values=server, errex=1)
+    server.prepare_sqlite()
     server.main()
 
 
