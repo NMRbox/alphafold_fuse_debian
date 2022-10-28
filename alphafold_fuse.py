@@ -129,10 +129,12 @@ class AlphaFoldFS(Fuse):
             with self.sqlite as sql:
                 taxonomy = sql.get_taxonomy_from_uniprot(pc[1])
                 if taxonomy:
+                    metadata, data = get_uniprot(self.alphafold_dir, pc[1], taxonomy)
                     st = MyStat()
                     st.st_mode = stat.S_IFREG | 0o444
                     st.st_nlink = 1
-                    st.st_size = 1  # TODO: Look this up?
+                    st.st_size = metadata.size
+                    st.st_mtime = metadata.mtime
                     return st
                 else:
                     return -errno.ENOENT
