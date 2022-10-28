@@ -100,6 +100,8 @@ def create_or_update_sqlite(args: argparse.Namespace):
         print('Building index...')
         cursor.execute('DROP INDEX IF EXISTS uni_index;')
         cursor.execute('CREATE UNIQUE INDEX uni_index ON taxonomy_tmp(uniprot_id, taxonomy_id, chunk);')
+        cursor.execute('DROP INDEX IF EXISTS taxon_index;')
+        cursor.execute('CREATE UNIQUE INDEX taxon_index ON taxonomy_tmp(taxonomy_id, uniprot_id);')
         cursor.execute('DROP TABLE IF EXISTS taxonomy;')
         cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
         sqlite_conn.commit()
