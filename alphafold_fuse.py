@@ -7,10 +7,14 @@
 #
 
 import errno
+import functools
+import gzip
 import os
 import sqlite3
 import stat
 import sys
+import tarfile
+
 
 # pull in some spaghetti to make this stuff work without fuse-py being installed
 try:
@@ -27,6 +31,24 @@ fuse.fuse_python_api = (0, 2)
 
 hello_path = '/hello'
 hello_str = b'Hello World!\n'
+
+
+@functools.lru_cache(1024)
+def get_uniprot(alphafold_path: str, uniprot_id: str, taxonomy_id: str):
+    chunk = 0
+    tar_path = os.path.join(alphafold_path, f'proteome-tax_id-{taxonomy_id}-{chunk}_v3.tar')
+    while os.path.isfile(tar_path):
+        with tarfile.open(tar_path) as tf:
+            for member in tf:
+                if member.name == f'AF-{uniprot_id}-F1-model_v3.cif.gz':
+                    data = tf.extractfile(member)
+                    with gzip.open(data) as uncompressed:
+                        return member, uncompressed
+        chunk += 1
+        tar_path = os.path.join(alphafold_path, f'proteome-tax_id-{taxonomy_id}-{chunk}_v3.tar')
+
+    # Didn't find the file - had to seek the entire archive
+    return None
 
 
 class MyStat(fuse.Stat):
@@ -75,21 +97,17 @@ class AlphaFoldFS(Fuse):
     def __init__(self, *args, **kw):
         Fuse.__init__(self, *args, **kw)
 
-    # def getattr(self, path):
-    #     st = MyStat()
-    #     if path == '/':
-    #         st.st_mode = stat.S_IFDIR | 0o755
-    #         st.st_nlink = 2
-    #     elif path == hello_path:
-    #         st.st_mode = stat.S_IFREG | 0o444
-    #         st.st_nlink = 1
-    #         st.st_size = len(hello_str)
-    #     else:
-    #         return -errno.ENOENT
-    #     return st
-
     def getattr(self, path):
+
+
         print('getattr', path)
+        if path == hello_path:
+            st = MyStat()
+            st.st_mode = stat.S_IFREG | 0o444
+            st.st_nlink = 1
+            st.st_size = len(hello_str)
+            return st
+
         if path in ['/uniprot', '/pdb', '/taxonomy']:
             st = MyStat()
             st.st_mode = stat.S_IFDIR | 0o555
@@ -97,14 +115,16 @@ class AlphaFoldFS(Fuse):
             st.st_gid = os.getgid()
             st.st_uid = os.getuid()
             return st
-        if path.startswith('/uniprot/'):
+        pc = path.split('/')[1:]
+        print(pc)
+        if pc[0] == 'uniprot' and len(pc) == 2:
             with SQLReader(self.sqlpath) as sql:
-                taxonomy = sql.get_taxonomy_from_uniprot(path.split('/')[2])
+                taxonomy = sql.get_taxonomy_from_uniprot(pc[1])
                 if taxonomy:
                     st = MyStat()
                     st.st_mode = stat.S_IFREG | 0o444
                     st.st_nlink = 1
-                    st.st_size = 1 #TODO: Look this up?
+                    st.st_size = 1  # TODO: Look this up?
                     return st
                 else:
                     return -errno.ENOENT
@@ -115,10 +135,12 @@ class AlphaFoldFS(Fuse):
             for r in '.', '..', 'uniprot', 'pdb', 'taxonomy':
                 yield fuse.Direntry(r)
             return
-        for r in '.', '..':
-            yield fuse.Direntry(r)
+        # for r in '.', '..':
+        #     yield fuse.Direntry(r)
+        #return
 
     def open(self, path, flags):
+        print('open', path, flags)
         if path != hello_path:
             return -errno.ENOENT
         accmode = os.O_RDONLY | os.O_WRONLY | os.O_RDWR
