@@ -119,7 +119,7 @@ class AlphaFoldFS(Fuse):
             if len(pc) == 2:
                 # TODO: Check that pc[1] is a valid taxon
                 st = MyStat()
-                st.st_mode = stat.S_IFREG | 0o444
+                st.st_mode = stat.S_IFDIR | 0o555
                 st.st_nlink = 1
                 st.st_gid = os.getgid()
                 st.st_uid = os.getuid()
