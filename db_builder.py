@@ -67,9 +67,13 @@ def get_files_from_tar(argument):
 def index_files(root_dir: str):
     # Populate DB
     def get_files_as_iterator():
+        count = 2000
         with os.scandir(root_dir) as it:
             for entry in it:
                 if entry.name.endswith('.tar'):
+                    count -= 1
+                    if count == 0:
+                        return
                     yield entry.name, entry.path
 
     with multiprocessing.Pool(processes=250) as p:
