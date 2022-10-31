@@ -4,8 +4,8 @@ import gzip
 import multiprocessing
 import os
 import sqlite3
+import struct
 import subprocess
-import sys
 import tarfile
 from typing import Union, Literal
 
@@ -24,31 +24,42 @@ def round_to_512(number):
 
 def get_files_from_tar(argument):
     name, path = argument
-    offset = 0
     split = name.split('-')
     taxonomy_id = split[2]
     chunk = split[3].split("_")[0]
-    print(f'Working on... {taxonomy_id}-{chunk}')
-
     files = []
 
-    data = subprocess.check_output(['/usr/bin/tar', '--list', '--verbose', '-f', path])
-    for line in data.decode().split('\n'):
-        parts = line.split()
-        if parts:
-            size = int(parts[2])
-            if parts[5].endswith('-F1-model_v3.cif.gz'):
-                files.append([taxonomy_id, chunk, parts[5].replace('-F1-model_v3.cif.gz', ''), offset, size])
-            offset += size + 512
-            offset = round_to_512(offset)
+    # # This is faster when only getting the file names and offsets, but it can't get the uncompressed sizes
+    # offset = 0
+    # data = subprocess.check_output(['/usr/bin/tar', '--list', '--verbose', '-f', path])
+    # for line in data.decode().split('\n'):
+    #     parts = line.split()
+    #     if parts:
+    #         size = int(parts[2])
+    #         if parts[5].endswith('-F1-model_v3.cif.gz'):
+    #             files.append([taxonomy_id, chunk, parts[5].split('-')[1], offset, size])
+    #         offset += size + 512
+    #         offset = round_to_512(offset)
 
+    with tarfile.open(path) as tf:
+        for file in tf:
+            if file.name.endswith('-F1-model_v3.cif.gz'):
+                # Note - this only works as long as the biggest extracted file is <4gb. If the compressed data is >
+                #  (1/1024)*gzip_size, we assume it may expand to be too big and use the thorough size calculation,
+                #   but otherwise use the lazy uncompressed file size check.
+                #  When written (10/31/22) the largest uncompressed file was only 2.6MB so this logic shouldn't trigger.
+                f = tf.extractfile(file)
+                f.seek(-4, os.SEEK_END)
+                if f.tell() > 4194304:
+                    with gzip.open(tf.extractfile(file)) as gzip_file:
+                        print(struct.unpack("<I", f.read(4))[0], len(gzip_file.read()))
+                        gzip_file.seek(0)
+                        files.append([taxonomy_id, chunk, file.name.split('-')[1], file.offset,
+                                      file.size, len(gzip_file.read())])
+                else:
+                    files.append([taxonomy_id, chunk, file.name.split('-')[1], file.offset,
+                                  file.size, struct.unpack("<I", f.read(4))[0]])
     return files
-
-    # with tarfile.open(entry.path) as tf:
-    #     for file in tf.getmembers():
-    #         if file.name.endswith('-F1-model_v3.cif.gz'):
-    #             if file.name.replace('-F1-model_v3.cif.gz', '') == 'AF-A0A1Q1MKJ4':
-    #                 yield taxonomy_id, chunk, file.name.replace('-F1-model_v3.cif.gz', ''), file.offset, file.size
 
 
 def index_files(root_dir: str):
@@ -93,8 +104,9 @@ def create_or_update_sqlite(args: argparse.Namespace):
         print("Doing Uniprot<->Taxonomy ID")
         cursor.execute('DROP TABLE IF EXISTS taxonomy_tmp;')
         cursor.execute('CREATE TABLE taxonomy_tmp (taxonomy_id text, chunk number, uniprot_id text, offset numeric, '
-                       'size numeric);')
-        cursor.executemany("INSERT INTO taxonomy_tmp(taxonomy_id, chunk, uniprot_id, offset, size) values (?,?,?,?,?)",
+                       'size numeric, expanded_size numeric);')
+        cursor.executemany("INSERT INTO taxonomy_tmp(taxonomy_id, chunk, uniprot_id, offset, size, expanded_size) "
+                           "VALUES (?,?,?,?,?,?)",
                            index_files(args.alphafold_path))
         sqlite_conn.commit()
         print('Building index...')
