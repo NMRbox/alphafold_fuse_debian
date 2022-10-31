@@ -78,7 +78,7 @@ def index_files(root_dir: str):
                 yield row
 
 
-def get_id_mappings(download=False, action: Union[Literal['pdb'], Literal['uniprot']] = 'uniprot'):
+def get_id_mappings(download=False):
     if not os.path.exists('idmapping_selected.tab.gz') or download:
         print("Downloading Uniprot<->PDB id mapping file...")
         url = 'https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/idmapping_selected.tab.gz'
@@ -88,11 +88,8 @@ def get_id_mappings(download=False, action: Union[Literal['pdb'], Literal['unipr
         for line in id_mapping:
             datum = line.decode().split('\t')
             try:
-                if action == 'uniprot':
-                    yield datum[0], datum[12]
-                elif action == 'pdb':
-                    for pdb in set([_.split(":")[0] for _ in datum[5].split('; ')]):
-                        yield pdb, datum[0]
+                for pdb in set([_.split(":")[0] for _ in datum[5].split('; ')]):
+                    yield pdb, datum[0]
             except IndexError:
                 break
 
