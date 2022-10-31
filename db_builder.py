@@ -89,9 +89,10 @@ def get_id_mappings(download=False):
             datum = line.decode().split('\t')
             try:
                 pdb_ids = set([_.split(":")[0] for _ in datum[5].split('; ')])
-                if len(pdb_ids):
-                    for pdb in pdb_ids:
-                        yield pdb, datum[0]
+                if pdb_ids == {''}:
+                    continue
+                for pdb in pdb_ids:
+                    yield pdb, datum[0]
             except IndexError:
                 break
 
