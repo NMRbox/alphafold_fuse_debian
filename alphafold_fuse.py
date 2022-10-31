@@ -59,7 +59,7 @@ class SQLReader:
         self.sql_file_path = sql_file_path
 
     def __enter__(self):
-        self.sql_connection = sqlite3.connect(self.sql_file_path)
+        self.sql_connection = sqlite3.connect(f'file:{self.sql_file_path}', uri=True)
         self.cursor = self.sql_connection.cursor()
         return self
 
