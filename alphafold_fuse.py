@@ -116,13 +116,29 @@ class SQLReader:
         self.cursor.close()
         self.sql_connection.close()
 
-    def get_uniprot_from_taxonomy_substring(self, taxonomy_substring):
+    def get_uniprot_from_pdb_substring(self, pdb_substring: str):
+        self.cursor.execute('''
+SELECT taxonomy.uniprot_id FROM taxonomy INNER JOIN pdb ON taxonomy.uniprot_id = pdb.uniprot_id
+    WHERE substr(pdb.pdb_id , 1, 2) = ?;
+        ''', [pdb_substring])
+        return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
+
+    def get_uniprot_from_uniprot_substring(self, uniprot_substring: str):
+        self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE substr(uniprot_id, 1, 2) = ?', [uniprot_substring])
+        return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
+
+    def get_uniprot_from_taxonomy_substring(self, taxonomy_substring: str):
         self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE substr(taxonomy_id, 1, 2) = ?', [taxonomy_substring])
         return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
 
-    @functools.lru_cache(10)
     def get_uniprot_from_taxonomy(self, taxonomy):
         self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE taxonomy_id = ?', [taxonomy])
+        return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
+
+    def get_uniprot_from_pdb(self, pdb):
+        self.cursor.execute('''
+SELECT taxonomy.uniprot_id FROM taxonomy INNER JOIN pdb ON taxonomy.uniprot_id = pdb.uniprot_id
+WHERE pdb.pdb_id = ?;''', [pdb])
         return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
 
     @functools.lru_cache(10000)
@@ -221,6 +237,7 @@ class AlphaFoldFS(Fuse):
                 elif action == 'readdir':
                     return path_config[pc[0]]()
             # Now handle actual data requests of one sort or another
+            #  These are the direct reference short-cuts, bypassing the directory slices by character
             else:
                 if pc[0] == 'uniprot':
                     with self.sqlite as sql:
@@ -229,10 +246,16 @@ class AlphaFoldFS(Fuse):
                             return stat_info
                         elif action == 'read':
                             return _send_from_buffer(self._read_uniprot_contents(stat_info), size, offset)
-                if pc[0] == 'taxonomy':
+                elif pc[0] == 'taxonomy':
                     if action == 'readdir':
                         with self.sqlite as sql:
                             return sql.get_uniprot_from_taxonomy(pc[1])
+                    elif action == 'getattr':
+                        return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
+                elif pc[0] == 'pdb':
+                    if action == 'readdir':
+                        with self.sqlite as sql:
+                            return sql.get_uniprot_from_pdb(pc[1])
                     elif action == 'getattr':
                         return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
 
@@ -247,7 +270,11 @@ class AlphaFoldFS(Fuse):
                         with self.sqlite as sql:
                             return sql.get_uniprot_from_taxonomy_substring(f'{pc[1]}{pc[2]}')
                     elif pc[0] == 'uniprot':
-                        return dirent_gen_from_list(['not', 'yet', 'implemented'])
+                        with self.sqlite as sql:
+                            return sql.get_uniprot_from_uniprot_substring(f'{pc[1]}{pc[2]}')
+                    elif pc[0] == 'pdb':
+                        with self.sqlite as sql:
+                            return sql.get_uniprot_from_pdb_substring(f'{pc[1]}{pc[2]}')
 
             if pc[0] == 'taxonomy':
                 with self.sqlite as sql:
