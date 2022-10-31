@@ -123,17 +123,17 @@ def create_or_update_sqlite(args: argparse.Namespace):
         cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
         sqlite_conn.commit()
 
-        # # Set up the PDB<->uniprot DB
-        # print("Doing PDB<->UniProt")
-        # cursor.execute('DROP TABLE IF EXISTS pdb_tmp;')
-        # cursor.execute('CREATE TABLE pdb_tmp (pdb_id text, uniprot_id text);')
-        # cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)",
-        #                    get_id_mappings(args.download_pdb, 'pdb'))
-        # cursor.execute('DROP INDEX IF EXISTS pdb_index;')
-        # cursor.execute('CREATE UNIQUE INDEX pdb_index ON pdb_tmp (pdb_id, uniprot_id);')
-        # cursor.execute('DROP TABLE IF EXISTS pdb;')
-        # cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
-        # sqlite_conn.commit()
+        # Set up the PDB<->uniprot DB
+        print("Doing PDB<->UniProt")
+        cursor.execute('DROP TABLE IF EXISTS pdb_tmp;')
+        cursor.execute('CREATE TABLE pdb_tmp (pdb_id text, uniprot_id text);')
+        cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)",
+                           get_id_mappings(args.download_pdb, 'pdb'))
+        cursor.execute('DROP INDEX IF EXISTS pdb_index;')
+        cursor.execute('CREATE UNIQUE INDEX pdb_index ON pdb_tmp (pdb_id, uniprot_id);')
+        cursor.execute('DROP TABLE IF EXISTS pdb;')
+        cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
+        sqlite_conn.commit()
 
 
 if __name__ == '__main__':
