@@ -43,24 +43,23 @@ def get_files_from_tar(argument):
     #         offset += size + 512
     #         offset = round_to_512(offset)
 
-    with tarfile.open(path) as tf:
+    with tarfile.open(path) as tf, open(path, 'rb') as raw:
         for file in tf:
             if file.name.endswith('-F1-model_v3.cif.gz'):
                 # Note - this only works as long as the biggest extracted file is <4gb. If the compressed data is >
                 #  (1/1024)*gzip_size, we assume it may expand to be too big and use the thorough size calculation,
                 #   but otherwise use the lazy uncompressed file size check.
                 #  When written (10/31/22) the largest uncompressed file was only 2.6MB so this logic shouldn't trigger.
-                f = tf.extractfile(file)
-                f.seek(-4, os.SEEK_END)
-                if f.tell() > 4194304:
+
+                if file.size > 4194304:
                     with gzip.open(tf.extractfile(file)) as gzip_file:
-                        print(struct.unpack("<I", f.read(4))[0], len(gzip_file.read()))
                         gzip_file.seek(0)
                         files.append([taxonomy_id, chunk, file.name.split('-')[1], file.offset,
                                       file.size, len(gzip_file.read())])
                 else:
+                    raw.seek((file.offset + 512) + (file.size - 4))
                     files.append([taxonomy_id, chunk, file.name.split('-')[1], file.offset,
-                                  file.size, struct.unpack("<I", f.read(4))[0]])
+                                  file.size, struct.unpack("<I", raw.read(4))[0]])
     return files
 
 
@@ -124,17 +123,17 @@ def create_or_update_sqlite(args: argparse.Namespace):
         cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
         sqlite_conn.commit()
 
-        # Set up the PDB<->uniprot DB
-        print("Doing PDB<->UniProt")
-        cursor.execute('DROP TABLE IF EXISTS pdb_tmp;')
-        cursor.execute('CREATE TABLE pdb_tmp (pdb_id text, uniprot_id text);')
-        cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)",
-                           get_id_mappings(args.download_pdb, 'pdb'))
-        cursor.execute('DROP INDEX IF EXISTS pdb_index;')
-        cursor.execute('CREATE UNIQUE INDEX pdb_index ON pdb_tmp (pdb_id, uniprot_id);')
-        cursor.execute('DROP TABLE IF EXISTS pdb;')
-        cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
-        sqlite_conn.commit()
+        # # Set up the PDB<->uniprot DB
+        # print("Doing PDB<->UniProt")
+        # cursor.execute('DROP TABLE IF EXISTS pdb_tmp;')
+        # cursor.execute('CREATE TABLE pdb_tmp (pdb_id text, uniprot_id text);')
+        # cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)",
+        #                    get_id_mappings(args.download_pdb, 'pdb'))
+        # cursor.execute('DROP INDEX IF EXISTS pdb_index;')
+        # cursor.execute('CREATE UNIQUE INDEX pdb_index ON pdb_tmp (pdb_id, uniprot_id);')
+        # cursor.execute('DROP TABLE IF EXISTS pdb;')
+        # cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
+        # sqlite_conn.commit()
 
 
 if __name__ == '__main__':
