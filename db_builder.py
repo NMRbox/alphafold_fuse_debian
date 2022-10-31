@@ -29,6 +29,8 @@ def get_files_from_tar(argument):
     chunk = split[3].split("_")[0]
     files = []
 
+    print(f"Processing {taxonomy_id}-{chunk}...")
+
     # # This is faster when only getting the file names and offsets, but it can't get the uncompressed sizes
     # offset = 0
     # data = subprocess.check_output(['/usr/bin/tar', '--list', '--verbose', '-f', path])
