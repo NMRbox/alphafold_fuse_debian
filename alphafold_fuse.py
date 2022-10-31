@@ -28,7 +28,7 @@ def get_alphanum():
 
 
 def get_numeric():
-    for number in digits:
+    for number in "123456789":
         yield fuse.Direntry(number)
 
 
