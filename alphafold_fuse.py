@@ -174,15 +174,15 @@ class AlphaFoldFS(Fuse):
             compressed_bytes = tf.read(stat_info.tar_size)
             return gzip.decompress(compressed_bytes)
 
-    def _fake_filesystem(self, path: str,
-                         action: Union[Literal['readdir'], Literal['getattr'], Literal['read']],
-                         size: Optional[int] = None, offset: Optional[int] = None) -> \
+    def _fake_filesystem_logging(self, path: str,
+                                 action: Union[Literal['readdir'], Literal['getattr'], Literal['read']],
+                                 size: Optional[int] = None, offset: Optional[int] = None) -> \
             Union[fuse.Stat, Literal[-2], Generator[fuse.Direntry, None, None], bytes]:
-        result = self._fake_filesystem_real(path, action, size, offset)
+        result = self._fake_filesystem(path, action, size, offset)
         logging.debug(f'{action}: {path, size, offset, result}')
         return result
 
-    def _fake_filesystem_real(self, path: str,
+    def _fake_filesystem(self, path: str,
                          action: Union[Literal['readdir'], Literal['getattr'], Literal['read']],
                          size: Optional[int] = None, offset: Optional[int] = None) -> \
             Union[fuse.Stat, Literal[-2], Generator[fuse.Direntry, None, None], bytes]:
@@ -268,10 +268,10 @@ class AlphaFoldFS(Fuse):
             return -2
 
     def getattr(self, path):
-        return self._fake_filesystem(path, 'getattr')
+        return self._fake_filesystem_logging(path, 'getattr')
 
     def readdir(self, path, offset):
-        return self._fake_filesystem(path, 'readdir')
+        return self._fake_filesystem_logging(path, 'readdir')
 
     def open(self, path, flags):
         logging.debug(f'open {path} {flags}')
@@ -282,7 +282,7 @@ class AlphaFoldFS(Fuse):
 
 
     def read(self, path, size, offset):
-        return self._fake_filesystem(path, 'read', size, offset)
+        return self._fake_filesystem_logging(path, 'read', size, offset)
 
         # TODO: Implement check that path isn't one we don't know
         # just in case something buggy calls open before calling getent. Return:
