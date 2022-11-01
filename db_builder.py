@@ -101,30 +101,31 @@ def create_or_update_sqlite(args: argparse.Namespace):
     with sqlite3.connect(args.sqlite_location) as sqlite_conn:
         cursor = sqlite_conn.cursor()
 
-        # Set up taxonomy<->uniprot DB
-        print("Doing Uniprot<->Taxonomy ID")
-        cursor.execute('DROP TABLE IF EXISTS taxonomy_tmp;')
-        cursor.execute('CREATE TABLE taxonomy_tmp (taxonomy_id text, chunk number, uniprot_id text, offset numeric, '
-                       'size numeric, expanded_size numeric);')
-        cursor.executemany("INSERT INTO taxonomy_tmp(taxonomy_id, chunk, uniprot_id, offset, size, expanded_size) "
-                           "VALUES (?,?,?,?,?,?)",
-                           index_files(args.alphafold_path))
-        sqlite_conn.commit()
-        print('Building UniProt location index...')
-        cursor.execute('DROP INDEX IF EXISTS uni_index;')
-        cursor.execute('CREATE UNIQUE INDEX uni_index ON taxonomy_tmp(uniprot_id);')
-        print('Building taxonomy ID index...')
-        cursor.execute('DROP INDEX IF EXISTS taxon_index;')
-        cursor.execute('CREATE UNIQUE INDEX taxon_index ON taxonomy_tmp(taxonomy_id, uniprot_id);')
-        print('Building substring index on taxonomy...')
-        cursor.execute('DROP INDEX IF EXISTS taxon_substr;')
-        cursor.execute('CREATE INDEX taxon_substr ON taxonomy_tmp(substr(taxonomy_id, 1, 2));')
-        print('Building substring index on UniProt...')
-        cursor.execute('DROP INDEX IF EXISTS uniprot_substr;')
-        cursor.execute('CREATE INDEX uniprot_substr ON taxonomy_tmp(substr(uniprot_id, 1, 2));')
-        cursor.execute('DROP TABLE IF EXISTS taxonomy;')
-        cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
-        sqlite_conn.commit()
+        if args.rebuild_entries:
+            # Set up taxonomy<->uniprot DB
+            print("Doing Uniprot<->Taxonomy ID")
+            cursor.execute('DROP TABLE IF EXISTS taxonomy_tmp;')
+            cursor.execute('CREATE TABLE taxonomy_tmp (taxonomy_id text, chunk number, uniprot_id text,'
+                           'offset numeric, size numeric, expanded_size numeric);')
+            cursor.executemany("INSERT INTO taxonomy_tmp(taxonomy_id, chunk, uniprot_id, offset, size, expanded_size) "
+                               "VALUES (?,?,?,?,?,?)",
+                               index_files(args.alphafold_path))
+            sqlite_conn.commit()
+            print('Building UniProt location index...')
+            cursor.execute('DROP INDEX IF EXISTS uni_index;')
+            cursor.execute('CREATE UNIQUE INDEX uni_index ON taxonomy_tmp(uniprot_id);')
+            print('Building taxonomy ID index...')
+            cursor.execute('DROP INDEX IF EXISTS taxon_index;')
+            cursor.execute('CREATE UNIQUE INDEX taxon_index ON taxonomy_tmp(taxonomy_id, uniprot_id);')
+            print('Building substring index on taxonomy...')
+            cursor.execute('DROP INDEX IF EXISTS taxon_substr;')
+            cursor.execute('CREATE INDEX taxon_substr ON taxonomy_tmp(substr(taxonomy_id, 1, 2));')
+            print('Building substring index on UniProt...')
+            cursor.execute('DROP INDEX IF EXISTS uniprot_substr;')
+            cursor.execute('CREATE INDEX uniprot_substr ON taxonomy_tmp(substr(uniprot_id, 1, 2));')
+            cursor.execute('DROP TABLE IF EXISTS taxonomy;')
+            cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
+            sqlite_conn.commit()
 
         # Set up the PDB<->uniprot DB
         if args.rebuild_pdb:
@@ -133,6 +134,7 @@ def create_or_update_sqlite(args: argparse.Namespace):
             cursor.execute('CREATE TABLE pdb_tmp (pdb_id text, uniprot_id text);')
             cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)",
                                get_id_mappings(args.download_pdb))
+            sqlite_conn.commit()
             print('Building index on PDB IDs (pdb_id -> uniprot_id)...')
             cursor.execute('DROP INDEX IF EXISTS pdb_uniprot_index;')
             cursor.execute('CREATE UNIQUE INDEX pdb_uniprot_index ON pdb_tmp (pdb_id, uniprot_id);')
@@ -163,11 +165,19 @@ if __name__ == '__main__':
                         action='store_true',
                         dest='download_pdb',
                         help='Force re-download the PDB index before processing')
-    parser.add_argument('-n', '--no-pdb',
+    parser.add_argument('--no-pdb',
                         action='store_false',
                         default=True,
                         dest='rebuild_pdb',
-                        help='Reload the PDB data. Default turned off.')
+                        help='Don\'t reload the PDB ID mapping data.')
+    parser.add_argument('--no-entry',
+                        action='store_false',
+                        default=True,
+                        dest='rebuild_entries',
+                        help='Don\'t reload the entry location data.')
     args = parser.parse_args()
+
+    if not args.rebuild_entries and not args.rebuild_pdb:
+        raise ValueError('You have asked to do nothing. Please specify one or neither of --no-entry and --no-pdb.')
 
     create_or_update_sqlite(args)
