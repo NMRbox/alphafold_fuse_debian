@@ -31,35 +31,48 @@ def get_files_from_tar(argument):
 
     print(f"Processing {taxonomy_id}-{chunk}...")
 
-    # # This is faster when only getting the file names and offsets, but it can't get the uncompressed sizes
-    # offset = 0
-    # data = subprocess.check_output(['/usr/bin/tar', '--list', '--verbose', '-f', path])
-    # for line in data.decode().split('\n'):
-    #     parts = line.split()
-    #     if parts:
-    #         size = int(parts[2])
-    #         if parts[5].endswith('-F1-model_v3.cif.gz'):
-    #             files.append([taxonomy_id, chunk, parts[5].split('-')[1], offset, size])
-    #         offset += size + 512
-    #         offset = round_to_512(offset)
+    with open(path, 'rb') as raw:
+        offset = 0
+        data = subprocess.check_output(['/usr/bin/tar', '--list', '--verbose', '-f', path])
+        for line in data.decode().split('\n'):
+            parts = line.split()
+            if parts:
+                size = int(parts[2])
+                if parts[5].endswith('.cif.gz') and "F1-model" in parts[5]:
 
-    with tarfile.open(path) as tf, open(path, 'rb') as raw:
-        for file in tf:
-            if file.name.endswith('-F1-model_v3.cif.gz'):
-                # Note - this only works as long as the biggest extracted file is <4gb. If the compressed data is >
-                #  (1/1024)*gzip_size, we assume it may expand to be too big and use the thorough size calculation,
-                #   but otherwise use the lazy uncompressed file size check.
-                #  When written (10/31/22) the largest uncompressed file was only 2.6MB so this logic shouldn't trigger.
+                    # Note - this only works as long as the biggest extracted file is <4gb. If the compressed data is >
+                    #  (1/1024)*gzip_size, we assume it may expand to be too big and use the thorough size calculation,
+                    #   but otherwise use the lazy uncompressed file size check.
+                    #  When written (10/31/22) the largest uncompressed file was only 2.6MB so this logic shouldn't trigger.
 
-                if file.size > 4194304:
-                    with gzip.open(tf.extractfile(file)) as gzip_file:
-                        gzip_file.seek(0)
-                        files.append([taxonomy_id, chunk, file.name.split('-')[1], file.offset,
-                                      file.size, len(gzip_file.read())])
-                else:
-                    raw.seek((file.offset + 512) + (file.size - 4))
-                    files.append([taxonomy_id, chunk, file.name.split('-')[1], file.offset,
-                                  file.size, struct.unpack("<I", raw.read(4))[0]])
+                    if size > 4194304:
+                        raw.seek(offset + 512)
+                        uncompressed_size = len(gzip.decompress(raw.read(size)))
+                        files.append([taxonomy_id, chunk, parts[5].split('-')[1], offset, size, uncompressed_size])
+                    else:
+                        raw.seek((offset + 512) + (size - 4))
+                        files.append([taxonomy_id, chunk, parts[5].split('-')[1], offset, size,
+                                      struct.unpack("<I", raw.read(4))[0]])
+                offset += size + 512
+                offset = round_to_512(offset)
+
+    # with tarfile.open(path) as tf, open(path, 'rb') as raw:
+    #     for file in tf:
+    #         if file.name.endswith('-F1-model_v3.cif.gz'):
+    #             # Note - this only works as long as the biggest extracted file is <4gb. If the compressed data is >
+    #             #  (1/1024)*gzip_size, we assume it may expand to be too big and use the thorough size calculation,
+    #             #   but otherwise use the lazy uncompressed file size check.
+    #             #  When written (10/31/22) the largest uncompressed file was only 2.6MB so this logic shouldn't trigger.
+    #
+    #             if file.size > 4194304:
+    #                 with gzip.open(tf.extractfile(file)) as gzip_file:
+    #                     gzip_file.seek(0)
+    #                     files.append([taxonomy_id, chunk, file.name.split('-')[1], file.offset,
+    #                                   file.size, len(gzip_file.read())])
+    #             else:
+    #                 raw.seek((file.offset + 512) + (file.size - 4))
+    #                 files.append([taxonomy_id, chunk, file.name.split('-')[1], file.offset,
+    #                               file.size, struct.unpack("<I", raw.read(4))[0]])
     return files
 
 
