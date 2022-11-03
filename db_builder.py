@@ -6,8 +6,7 @@ import os
 import sqlite3
 import struct
 import subprocess
-import tarfile
-from typing import Union, Literal
+from typing import Tuple, Generator, List
 
 
 def round_to_512(number):
@@ -22,8 +21,10 @@ def round_to_512(number):
     return number + 512 - remainder
 
 
-def get_files_from_tar(argument):
-    name, path = argument
+def get_files_from_tar(args: Tuple[str, str]) -> List[List[str, str, str, int, int, int]]:
+    """ Returns a list of lists (rows) of records from one single tar file of data. Called by the multiprocessing
+    code."""
+    name, path = args
     split = name.split('-')
     taxonomy_id = split[2]
     chunk = split[3].split("_")[0]
@@ -31,8 +32,10 @@ def get_files_from_tar(argument):
 
     print(f"Processing {taxonomy_id}-{chunk}...")
 
+    # We manually read bytes from the tar file to determine the size of the gzipped files inside
     with open(path, 'rb') as raw:
         offset = 0
+        # Use the tar binary to get the offsets of files inside the tar file
         data = subprocess.check_output(['/usr/bin/tar', '--list', '--verbose', '-f', path])
         for line in data.decode().split('\n'):
             parts = line.split()
@@ -43,7 +46,8 @@ def get_files_from_tar(argument):
                     # Note - this only works as long as the biggest extracted file is <4gb. If the compressed data is >
                     #  (1/1024)*gzip_size, we assume it may expand to be too big and use the thorough size calculation,
                     #   but otherwise use the lazy uncompressed file size check.
-                    #  When written (10/31/22) the largest uncompressed file was only 2.6MB so this logic shouldn't trigger.
+                    #  When written (10/31/22) the largest uncompressed file was only 2.6MB so this logic shouldn't
+                    #   trigger, though it has been tested.
 
                     if size > 4194304:
                         raw.seek(offset + 512)
@@ -63,7 +67,8 @@ def get_files_from_tar(argument):
     #             # Note - this only works as long as the biggest extracted file is <4gb. If the compressed data is >
     #             #  (1/1024)*gzip_size, we assume it may expand to be too big and use the thorough size calculation,
     #             #   but otherwise use the lazy uncompressed file size check.
-    #             #  When written (10/31/22) the largest uncompressed file was only 2.6MB so this logic shouldn't trigger.
+    #             #  When written (10/31/22) the largest uncompressed file was only 2.6MB so this logic shouldn't
+    #             #   trigger, though it has been tested.
     #
     #             if file.size > 4194304:
     #                 with gzip.open(tf.extractfile(file)) as gzip_file:
@@ -77,9 +82,21 @@ def get_files_from_tar(argument):
     return files
 
 
-def index_files(args: argparse.Namespace):
+def index_files(args: argparse.Namespace) -> Generator[List[str, str, str, int, int, int], None, None]:
+    """ Returns a generator which spits out lists (rows) with information about structure records in the AlphaFold tar
+    files which need to be inserted into the database. Uses multiprocessing to ensure that IO is the bottleneck rather
+    than CPU.
+
+    Current record format:
+
+    [taxonomy_id, chunk_id, UniProt_id, offset (into tar file, prior to tar metadata), size (of structure inside of tar
+    file), uncompressed_file_size]
+    """
+
     # Populate DB
     def get_files_as_iterator():
+        """Iterates through the AlphaFold directory using scandir, which is a generator which spits out file
+        names as needed. os.listdir() and similar get the full list of file names before any work starts being done."""
         count = 0
         with os.scandir(args.alphafold_path) as it:
             for entry in it:
@@ -96,12 +113,17 @@ def index_files(args: argparse.Namespace):
                 yield row
 
 
-def get_id_mappings(download=False):
+def get_id_mappings(download=False) -> Generator[Tuple[str, str]]:
+    """ Returns a generator which spits out PDB_id,UniProt_id tuples. """
+
     if not os.path.exists('idmapping_selected.tab.gz') or download:
         print("Downloading Uniprot<->PDB id mapping file...")
+
+        # This will redownload if the file on the server is newer
         url = 'https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/idmapping_selected.tab.gz'
         cmd = f'curl -z idmapping_selected.tab.gz -o idmapping_selected.tab.gz {url}'
         subprocess.run(cmd, shell=True, check=True)
+
     with gzip.open('idmapping_selected.tab.gz', 'r') as id_mapping:
         for line in id_mapping:
             datum = line.decode().split('\t')
@@ -115,7 +137,9 @@ def get_id_mappings(download=False):
                 break
 
 
-def create_or_update_sqlite(args: argparse.Namespace):
+def create_or_update_sqlite(args: argparse.Namespace) -> None:
+    """ Creates (if necessary) and updates the SQLite data file. """
+
     with sqlite3.connect(args.sqlite_location) as sqlite_conn:
         cursor = sqlite_conn.cursor()
 
@@ -165,6 +189,7 @@ def create_or_update_sqlite(args: argparse.Namespace):
             cursor.execute('DROP TABLE IF EXISTS pdb;')
             cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
             sqlite_conn.commit()
+    print("Done!")
 
 
 if __name__ == '__main__':
