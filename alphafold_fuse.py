@@ -12,22 +12,23 @@ from string import ascii_uppercase, digits
 from typing import Union, Literal, Optional, Generator, List
 
 import fuse
-from fuse import Fuse
 
-if not hasattr(fuse, '__version__'):
-    raise RuntimeError("your fuse-py doesn't know of fuse.__version__, probably it's too old.")
-
-fuse.fuse_python_api = (0, 2)
-
+# No clean way to access "open" from within the class otherwise
+# __builtins__.__getattribute__('open')() works but is worse than this
 fs_open = open
 
+# Check and set up fuse
+if not hasattr(fuse, '__version__'):
+    raise RuntimeError("You don't appear to be using the version of fuse-python specified in the requirements.")
+fuse.fuse_python_api = (0, 2)
 
-def get_alphanum():
+
+def get_alphanum() -> Generator[str, None, None]:
     for letter in ascii_uppercase + digits:
         yield fuse.Direntry(letter)
 
 
-def get_numeric():
+def get_numeric() -> Generator[str, None, None]:
     for number in "123456789":
         yield fuse.Direntry(number)
 
@@ -39,28 +40,12 @@ path_config = {
 }
 
 
-@functools.lru_cache(1024)
-def get_uniprot(alphafold_path: str, uniprot_id: str, taxonomy_id: str):
-    logging.debug(f'Getting data for {alphafold_path} {uniprot_id} {taxonomy_id}')
-    chunk = 0
-    tar_path = os.path.join(alphafold_path, f'proteome-tax_id-{taxonomy_id}-{chunk}_v3.tar')
-    while os.path.isfile(tar_path):
-        print("Reading ", tar_path)
-        with tarfile.open(tar_path) as tf:
-            for member in tf:
-                if member.name == f'AF-{uniprot_id}-F1-model_v3.cif.gz':
-                    data = tf.extractfile(member)
-                    with gzip.open(data) as uncompressed:
-                        return member, uncompressed.read()
-        chunk += 1
-        tar_path = os.path.join(alphafold_path, f'proteome-tax_id-{taxonomy_id}-{chunk}_v3.tar')
-
-    # Didn't find the file - had to seek the entire archive
-    return None, None
-
-
 @dataclasses.dataclass
 class LocationAwareStat(fuse.Stat):
+    """ Implements a Stat object, but adds some additional functionality.
+    Specifically, if it references a structure in AlphaFold, it keeps track
+    of where to actually get the file so that SQLite doesn't need to be
+    queried again. """
     tar_size: Optional[int] = None
     taxonomy_id: Optional[str] = None
     chunk: Optional[str] = None
@@ -91,6 +76,9 @@ class LocationAwareStat(fuse.Stat):
         self.st_uid = os.getuid()
 
     def __hash__(self):
+        """ This and __eq__ are implemented so that this class can be used as an input
+        to a function which has functools.lru_cache applied on it. Basically, if the
+        AlphaFold data is the same, then two LocationAwareStat are the same. """
         return hash(self.uniprot_id)
 
     def __eq__(self, other):
@@ -98,15 +86,19 @@ class LocationAwareStat(fuse.Stat):
 
 
 def dirent_gen_from_list(original_list: List) -> Generator[fuse.Direntry, None, None]:
+    """ Takes a list of strings and returns a generator which yields Direntries. """
     for record in original_list:
         yield fuse.Direntry(record)
 
 
 class SQLReader:
+    """ A class to help get data out of the SQLite database. """
+
     def __init__(self, sql_file_path):
         self.sql_file_path = sql_file_path
 
     def __enter__(self):
+        # Open the file read-only (uri=True) and use the row factory
         self.sql_connection = sqlite3.connect(f'file:{self.sql_file_path}', uri=True)
         self.sql_connection.row_factory = sqlite3.Row
         self.cursor = self.sql_connection.cursor()
@@ -116,20 +108,18 @@ class SQLReader:
         self.cursor.close()
         self.sql_connection.close()
 
-    def get_uniprot_from_pdb_substring(self, pdb_substring: str):
-        self.cursor.execute('''
-SELECT taxonomy.uniprot_id FROM taxonomy INNER JOIN pdb ON taxonomy.uniprot_id = pdb.uniprot_id
-    WHERE substr(pdb.pdb_id , 1, 2) = ?;
-        ''', [pdb_substring])
-        return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
+    def get_pdb_from_pdb_substring(self, pdb_substring: str):
+        self.cursor.execute('SELECT pdb_id FROM pdb WHERE substr(pdb.pdb_id , 1, 2) = ?;', [pdb_substring])
+        return dirent_gen_from_list([_['pdb_id'] for _ in self.cursor.fetchall()])
 
     def get_uniprot_from_uniprot_substring(self, uniprot_substring: str):
         self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE substr(uniprot_id, 1, 2) = ?', [uniprot_substring])
         return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
 
-    def get_uniprot_from_taxonomy_substring(self, taxonomy_substring: str):
-        self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE substr(taxonomy_id, 1, 2) = ?', [taxonomy_substring])
-        return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
+    def get_taxonomy_from_taxonomy_substring(self, taxonomy_substring: str):
+        self.cursor.execute('SELECT taxonomy_id FROM taxonomy WHERE substr(taxonomy_id, 1, 2) = ?',
+                            [taxonomy_substring])
+        return dirent_gen_from_list([_['taxonomy_id'] for _ in self.cursor.fetchall()])
 
     def get_uniprot_from_taxonomy(self, taxonomy):
         self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE taxonomy_id = ?', [taxonomy])
@@ -143,6 +133,7 @@ WHERE pdb.pdb_id = ?;''', [pdb])
 
     @functools.lru_cache(10000)
     def get_uniprot_info(self, uniprot_id) -> Union[LocationAwareStat, Literal[-2]]:
+        """ Load info for one particular UniProt ID from SQLite. Cache recent results. """
         self.cursor.execute('SELECT taxonomy_id, chunk, offset, size, expanded_size FROM taxonomy WHERE uniprot_id = ?',
                             [uniprot_id])
         data = self.cursor.fetchone()
@@ -169,10 +160,11 @@ def _send_from_buffer(buffer: bytes, size: int, offset: int) -> bytes:
     return buf
 
 
-class AlphaFoldFS(Fuse):
+class AlphaFoldFS(fuse.Fuse):
 
     def __init__(self, *args, **kw):
-        Fuse.__init__(self, *args, **kw)
+        fuse.Fuse.__init__(self, *args, **kw)
+        # This gets overwritten (inside the Fuse code) if specified in the arguments
         self.sqlpath = '/extras/alphafoldorig/proteomes/'
         self.sqlite = None
 
@@ -229,6 +221,7 @@ class AlphaFoldFS(Fuse):
                     return path_config[pc[0]]()
                 except KeyError:
                     return -2
+        # Of the form /pdb/2 or /uniprot/UNIPROT_ID or /taxonomy/taxonomy_ID
         elif len(pc) == 2:
             # First, do the directories since those are easy
             if len(pc[1]) == 1:
@@ -258,8 +251,7 @@ class AlphaFoldFS(Fuse):
                             return sql.get_uniprot_from_pdb(pc[1])
                     elif action == 'getattr':
                         return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
-
-        # Of the form /taxonomy/taxonomy_id/uniprot
+        # Of the form /taxonomy/taxonomy_id/uniprot or /pdb/2/D
         elif len(pc) == 3:
             # First, do the directories since those are easy
             if len(pc[1]) == 1:
@@ -268,14 +260,13 @@ class AlphaFoldFS(Fuse):
                 elif action == 'readdir':
                     if pc[0] == 'taxonomy':
                         with self.sqlite as sql:
-                            return sql.get_uniprot_from_taxonomy_substring(f'{pc[1]}{pc[2]}')
+                            return sql.get_taxonomy_from_taxonomy_substring(f'{pc[1]}{pc[2]}')
                     elif pc[0] == 'uniprot':
                         with self.sqlite as sql:
                             return sql.get_uniprot_from_uniprot_substring(f'{pc[1]}{pc[2]}')
                     elif pc[0] == 'pdb':
                         with self.sqlite as sql:
-                            return sql.get_uniprot_from_pdb_substring(f'{pc[1]}{pc[2]}')
-
+                            return sql.get_pdb_from_pdb_substring(f'{pc[1]}{pc[2]}')
             if pc[0] == 'taxonomy':
                 with self.sqlite as sql:
                     stat_info = sql.get_uniprot_info(uniprot_id=pc[2])
@@ -283,10 +274,34 @@ class AlphaFoldFS(Fuse):
                     return _send_from_buffer(self._read_uniprot_contents(stat_info), size, offset)
                 elif action == 'getattr':
                     return stat_info
+        # At this level, they are looking inside a PDB ID folder, Taxonomy ID folder, or directly at a uniprot
+        # Of the form /pdb/2/D/2DOG or /uniprot/C/4/C4K3Z3
         elif len(pc) == 4:
+            if pc[0] == 'uniprot':
+                # For uniprot, this is the file level
+                with self.sqlite as sql:
+                    stat_info = sql.get_uniprot_info(uniprot_id=pc[3])
+                if action == 'getattr':
+                    return stat_info
+                elif action == 'read':
+                    return _send_from_buffer(self._read_uniprot_contents(stat_info), size, offset)
+
+            # For taxonomy and PDB, it's a directory
+            if action == 'getattr':
+                return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
+
+            if action == 'readdir':
+                if pc[0] == 'taxonomy':
+                    with self.sqlite as sql:
+                        return sql.get_uniprot_from_taxonomy(pc[3])
+                elif pc[0] == 'pdb':
+                    with self.sqlite as sql:
+                        return sql.get_uniprot_from_pdb(pc[3])
+        # Of the form /pdb/2/D/2DOG/C4K3Z3
+        elif len(pc) == 5:
             # At this level, it's always a uniprot id
             with self.sqlite as sql:
-                stat_info = sql.get_uniprot_info(uniprot_id=pc[3])
+                stat_info = sql.get_uniprot_info(uniprot_id=pc[4])
             if action == 'getattr':
                 return stat_info
             elif action == 'read':
@@ -337,7 +352,7 @@ class AlphaFoldFS(Fuse):
 def main():
     usage = """
     Userspace AlphaFold archive decompressing file system.
-    """ + Fuse.fusage
+    """ + fuse.Fuse.fusage
 
     server = AlphaFoldFS(version="%prog " + fuse.__version__,
                          usage=usage,
