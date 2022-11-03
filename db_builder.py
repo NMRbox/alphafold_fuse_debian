@@ -56,6 +56,7 @@ def get_files_from_tar(argument):
                 offset += size + 512
                 offset = round_to_512(offset)
 
+    # This works, but it's actually slower than using subprocess to call out to tar... 🤯
     # with tarfile.open(path) as tf, open(path, 'rb') as raw:
     #     for file in tf:
     #         if file.name.endswith('-F1-model_v3.cif.gz'):
