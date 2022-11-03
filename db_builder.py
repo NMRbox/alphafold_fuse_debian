@@ -63,13 +63,17 @@ def get_files_from_tar(argument):
     return files
 
 
-def index_files(root_dir: str):
+def index_files(args: argparse.Namespace):
     # Populate DB
     def get_files_as_iterator():
-        with os.scandir(root_dir) as it:
+        count = 0
+        with os.scandir(args.alphafold_path) as it:
             for entry in it:
                 if entry.name.endswith('.tar'):
                     yield entry.name, entry.path
+                count += 1
+                if args.test and count > 10000:
+                    break
 
     with multiprocessing.Pool(processes=250) as p:
         map = p.imap_unordered(get_files_from_tar, get_files_as_iterator(), 500)
@@ -109,7 +113,7 @@ def create_or_update_sqlite(args: argparse.Namespace):
                            'offset numeric, size numeric, expanded_size numeric);')
             cursor.executemany("INSERT INTO taxonomy_tmp(taxonomy_id, chunk, uniprot_id, offset, size, expanded_size) "
                                "VALUES (?,?,?,?,?,?)",
-                               index_files(args.alphafold_path))
+                               index_files(args))
             sqlite_conn.commit()
             print('Building UniProt location index...')
             cursor.execute('DROP INDEX IF EXISTS uni_index;')
@@ -175,6 +179,11 @@ if __name__ == '__main__':
                         default=True,
                         dest='rebuild_entries',
                         help='Don\'t reload the entry location data.')
+    parser.add_argument('--test',
+                        action='store_true',
+                        default=False,
+                        dest='test',
+                        help='Only process 10000 tar files to profile code speed.')
     args = parser.parse_args()
 
     if not args.rebuild_entries and not args.rebuild_pdb:
