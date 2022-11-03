@@ -182,7 +182,7 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
             cursor.execute('CREATE UNIQUE INDEX pdb_uniprot_index ON pdb_tmp (pdb_id, uniprot_id);')
             print('Building index on PDB IDs (uniprot_id -> pdb_id)...')
             cursor.execute('DROP INDEX IF EXISTS uniprot_pdb_index;')
-            cursor.execute('CREATE UNIQUE INDEX uniprot_pdb_index ON pdb_tmp (uniprot_id);')
+            cursor.execute('CREATE INDEX uniprot_pdb_index ON pdb_tmp (uniprot_id);')
             print('Building index on PDB ID substrings...')
             cursor.execute('DROP INDEX IF EXISTS pdb_substr;')
             cursor.execute('CREATE INDEX pdb_substr ON pdb_tmp (substr(pdb_id, 1, 2));')
