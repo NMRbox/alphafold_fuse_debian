@@ -21,7 +21,7 @@ def round_to_512(number):
     return number + 512 - remainder
 
 
-def get_files_from_tar(args: Tuple[str, str]) -> List[List[str, str, str, int, int, int]]:
+def get_files_from_tar(args: Tuple[str, str]) -> List[Tuple[str, str, str, int, int, int]]:
     """ Returns a list of lists (rows) of records from one single tar file of data. Called by the multiprocessing
     code."""
     name, path = args
@@ -52,11 +52,11 @@ def get_files_from_tar(args: Tuple[str, str]) -> List[List[str, str, str, int, i
                     if size > 4194304:
                         raw.seek(offset + 512)
                         uncompressed_size = len(gzip.decompress(raw.read(size)))
-                        files.append([taxonomy_id, chunk, parts[5].split('-')[1], offset, size, uncompressed_size])
+                        files.append((taxonomy_id, chunk, parts[5].split('-')[1], offset, size, uncompressed_size))
                     else:
                         raw.seek((offset + 512) + (size - 4))
-                        files.append([taxonomy_id, chunk, parts[5].split('-')[1], offset, size,
-                                      struct.unpack("<I", raw.read(4))[0]])
+                        files.append((taxonomy_id, chunk, parts[5].split('-')[1], offset, size,
+                                      struct.unpack("<I", raw.read(4))[0]))
                 offset += size + 512
                 offset = round_to_512(offset)
 
@@ -82,7 +82,7 @@ def get_files_from_tar(args: Tuple[str, str]) -> List[List[str, str, str, int, i
     return files
 
 
-def index_files(args: argparse.Namespace) -> Generator[List[str, str, str, int, int, int], None, None]:
+def index_files(args: argparse.Namespace) -> Generator[Tuple[str, str, str, int, int, int], None, None]:
     """ Returns a generator which spits out lists (rows) with information about structure records in the AlphaFold tar
     files which need to be inserted into the database. Uses multiprocessing to ensure that IO is the bottleneck rather
     than CPU.
@@ -113,7 +113,7 @@ def index_files(args: argparse.Namespace) -> Generator[List[str, str, str, int, 
                 yield row
 
 
-def get_id_mappings(download=False) -> Generator[Tuple[str, str]]:
+def get_id_mappings(download=False) -> Generator[Tuple[str, str], None, None]:
     """ Returns a generator which spits out PDB_id,UniProt_id tuples. """
 
     if not os.path.exists('idmapping_selected.tab.gz') or download:
