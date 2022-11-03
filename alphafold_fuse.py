@@ -117,7 +117,7 @@ class SQLReader:
         return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
 
     def get_taxonomy_from_taxonomy_substring(self, taxonomy_substring: str):
-        self.cursor.execute('SELECT taxonomy_id FROM taxonomy WHERE substr(taxonomy_id, 1, 2) = ?',
+        self.cursor.execute('SELECT DISTINCT(taxonomy_id) FROM taxonomy WHERE substr(taxonomy_id, 1, 2) = ?',
                             [taxonomy_substring])
         return dirent_gen_from_list([_['taxonomy_id'] for _ in self.cursor.fetchall()])
 
