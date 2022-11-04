@@ -6,7 +6,10 @@ import os
 import sqlite3
 import struct
 import subprocess
+import time
 from typing import Tuple, Generator, List
+
+import ciso8601
 
 
 def round_to_512(number):
@@ -21,7 +24,7 @@ def round_to_512(number):
     return number + 512 - remainder
 
 
-def get_files_from_tar(args: Tuple[str, str]) -> List[Tuple[str, str, str, int, int, int]]:
+def get_files_from_tar(args: Tuple[str, str]) -> List[Tuple[str, str, str, str, int, int, int, float]]:
     """ Returns a list of lists (rows) of records from one single tar file of data. Called by the multiprocessing
     code."""
     name, path = args
@@ -42,6 +45,9 @@ def get_files_from_tar(args: Tuple[str, str]) -> List[Tuple[str, str, str, int, 
             if parts:
                 size = int(parts[2])
                 if parts[5].endswith('.cif.gz') and "F1-model" in parts[5]:
+                    ns = parts[5].split('-')
+                    version = ns[3].split('_')[1].split('.')[0]
+                    ctime = time.mktime(ciso8601.parse_datetime(f'{parts[3]} {parts[4]}').timetuple())
 
                     # Note - this only works as long as the biggest extracted file is <4gb. If the compressed data is >
                     #  (1/1024)*gzip_size, we assume it may expand to be too big and use the thorough size calculation,
@@ -52,33 +58,14 @@ def get_files_from_tar(args: Tuple[str, str]) -> List[Tuple[str, str, str, int, 
                     if size > 4194304:
                         raw.seek(offset + 512)
                         uncompressed_size = len(gzip.decompress(raw.read(size)))
-                        files.append((taxonomy_id, chunk, parts[5].split('-')[1], offset, size, uncompressed_size))
+                        files.append((taxonomy_id, chunk, version, ns[1], offset, size, uncompressed_size, ctime))
                     else:
                         raw.seek((offset + 512) + (size - 4))
-                        files.append((taxonomy_id, chunk, parts[5].split('-')[1], offset, size,
-                                      struct.unpack("<I", raw.read(4))[0]))
+                        files.append((taxonomy_id, chunk, version, ns[1], offset, size,
+                                      struct.unpack("<I", raw.read(4))[0], ctime))
                 offset += size + 512
                 offset = round_to_512(offset)
 
-    # This works, but it's actually slower than using subprocess to call out to tar... 🤯
-    # with tarfile.open(path) as tf, open(path, 'rb') as raw:
-    #     for file in tf:
-    #         if file.name.endswith('-F1-model_v3.cif.gz'):
-    #             # Note - this only works as long as the biggest extracted file is <4gb. If the compressed data is >
-    #             #  (1/1024)*gzip_size, we assume it may expand to be too big and use the thorough size calculation,
-    #             #   but otherwise use the lazy uncompressed file size check.
-    #             #  When written (10/31/22) the largest uncompressed file was only 2.6MB so this logic shouldn't
-    #             #   trigger, though it has been tested.
-    #
-    #             if file.size > 4194304:
-    #                 with gzip.open(tf.extractfile(file)) as gzip_file:
-    #                     gzip_file.seek(0)
-    #                     files.append([taxonomy_id, chunk, file.name.split('-')[1], file.offset,
-    #                                   file.size, len(gzip_file.read())])
-    #             else:
-    #                 raw.seek((file.offset + 512) + (file.size - 4))
-    #                 files.append([taxonomy_id, chunk, file.name.split('-')[1], file.offset,
-    #                               file.size, struct.unpack("<I", raw.read(4))[0]])
     return files
 
 
@@ -147,18 +134,19 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
             # Set up taxonomy<->uniprot DB
             print("Doing Uniprot<->Taxonomy ID")
             cursor.execute('DROP TABLE IF EXISTS taxonomy_tmp;')
-            cursor.execute('CREATE TABLE taxonomy_tmp (taxonomy_id text, chunk number, uniprot_id text,'
-                           'offset numeric, size numeric, expanded_size numeric);')
-            cursor.executemany("INSERT INTO taxonomy_tmp(taxonomy_id, chunk, uniprot_id, offset, size, expanded_size) "
-                               "VALUES (?,?,?,?,?,?)",
+            cursor.execute('CREATE TABLE taxonomy_tmp (taxonomy_id text, chunk number, version text, uniprot_id text,'
+                           'offset numeric, size numeric, expanded_size numeric, modification_time numeric);')
+            cursor.executemany("INSERT INTO taxonomy_tmp(taxonomy_id, chunk, version, uniprot_id, offset, size, "
+                               "expanded_size,"
+                               "modification_time) VALUES (?,?,?,?,?,?,?,?)",
                                index_files(args))
             sqlite_conn.commit()
             print('Building UniProt location index...')
             cursor.execute('DROP INDEX IF EXISTS uni_index;')
-            cursor.execute('CREATE UNIQUE INDEX uni_index ON taxonomy_tmp(uniprot_id);')
+            cursor.execute('CREATE UNIQUE INDEX uni_index ON taxonomy_tmp(uniprot_id, version);')
             print('Building taxonomy ID index...')
             cursor.execute('DROP INDEX IF EXISTS taxon_index;')
-            cursor.execute('CREATE UNIQUE INDEX taxon_index ON taxonomy_tmp(taxonomy_id, uniprot_id);')
+            cursor.execute('CREATE INDEX taxon_index ON taxonomy_tmp(taxonomy_id, uniprot_id);')
             print('Building substring index on taxonomy...')
             cursor.execute('DROP INDEX IF EXISTS taxon_substr;')
             cursor.execute('CREATE INDEX taxon_substr ON taxonomy_tmp(substr(taxonomy_id, -3, 2));')

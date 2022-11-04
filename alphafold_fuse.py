@@ -51,6 +51,7 @@ class LocationAwareStat(fuse.Stat):
     chunk: Optional[str] = None
     offset: Optional[int] = None
     uniprot_id: Optional[str] = None
+    version: Optional[str] = None
 
     def __init__(self, **kw):
         super().__init__(**kw)
@@ -61,6 +62,10 @@ class LocationAwareStat(fuse.Stat):
         self.st_mtime = 0
         self.st_ctime = 0
         self.st_nlink = 1
+
+        if 'modification_time' in kw:
+            self.st_mtime = kw['modification_time']
+            self.st_ctime = kw['modification_time']
 
         if 'st_size' in kw:
             self.st_size = kw['st_size']
@@ -134,7 +139,8 @@ WHERE pdb.pdb_id = ?;''', [pdb])
     @functools.lru_cache(10000)
     def get_uniprot_info(self, uniprot_id) -> Union[LocationAwareStat, Literal[-2]]:
         """ Load info for one particular UniProt ID from SQLite. Cache recent results. """
-        self.cursor.execute('SELECT taxonomy_id, chunk, offset, size, expanded_size FROM taxonomy WHERE uniprot_id = ?',
+        self.cursor.execute('SELECT taxonomy_id, chunk, offset, size, expanded_size,'
+                            'modification_time, version FROM taxonomy WHERE uniprot_id = ?',
                             [uniprot_id])
         data = self.cursor.fetchone()
         if not data:
@@ -146,7 +152,9 @@ WHERE pdb.pdb_id = ?;''', [pdb])
                                      taxonomy_id=data['taxonomy_id'],
                                      chunk=data['chunk'],
                                      offset=data['offset'],
-                                     uniprot_id=uniprot_id)
+                                     uniprot_id=uniprot_id,
+                                     modification_time=data['modification_time'],
+                                     version=data['version'])
 
 
 def _send_from_buffer(buffer: bytes, size: int, offset: int) -> bytes:
