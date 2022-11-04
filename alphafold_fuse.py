@@ -90,7 +90,7 @@ class LocationAwareStat(fuse.Stat):
         return self.uniprot_id == other.uniprot_id
 
 
-def dirent_gen_from_list(original_list: List) -> Generator[fuse.Direntry, None, None]:
+def dirent_gen_from_list(original_list: List[str]) -> Generator[fuse.Direntry, None, None]:
     """ Takes a list of strings and returns a generator which yields Direntries. """
     for record in original_list:
         yield fuse.Direntry(record)
@@ -139,22 +139,41 @@ WHERE pdb.pdb_id = ?;''', [pdb])
     @functools.lru_cache(10000)
     def get_uniprot_info(self, uniprot_id) -> Union[LocationAwareStat, Literal[-2]]:
         """ Load info for one particular UniProt ID from SQLite. Cache recent results. """
-        self.cursor.execute('SELECT taxonomy_id, chunk, offset, size, expanded_size,'
-                            'modification_time, version FROM taxonomy WHERE uniprot_id = ?',
-                            [uniprot_id])
-        data = self.cursor.fetchone()
-        if not data:
-            return -2
+
+        uniprot_id = uniprot_id.replace('.cif', '')
+        if '_' in uniprot_id:
+            version = uniprot_id.split('_')[1]
         else:
-            return LocationAwareStat(st_size=data['expanded_size'],
-                                     st_mode=stat.S_IFREG | 0o444,
-                                     tar_size=data['size'],
-                                     taxonomy_id=data['taxonomy_id'],
-                                     chunk=data['chunk'],
-                                     offset=data['offset'],
-                                     uniprot_id=uniprot_id,
-                                     modification_time=data['modification_time'],
-                                     version=data['version'])
+            version = None
+        uniprot_id = uniprot_id.split('_')[0]
+
+        self.cursor.execute('SELECT taxonomy_id, chunk, offset, size, expanded_size,'
+                            'modification_time, version FROM taxonomy WHERE uniprot_id = ? ORDER BY version DESC',
+                            [uniprot_id])
+        versions = self.cursor.fetchall()
+        if not versions:
+            return -2
+
+        print(f'getting version {version}')
+
+        data = versions[0]
+        for release in versions:
+            if release['version'] == version:
+                data = release
+                break
+        # If a version is specified, make sure it matches. If no version, return the first file.
+        if version and data['version'] != version:
+            return -2
+
+        return LocationAwareStat(st_size=data['expanded_size'],
+                                 st_mode=stat.S_IFREG | 0o444,
+                                 tar_size=data['size'],
+                                 taxonomy_id=data['taxonomy_id'],
+                                 chunk=data['chunk'],
+                                 offset=data['offset'],
+                                 uniprot_id=uniprot_id,
+                                 modification_time=data['modification_time'],
+                                 version=data['version'])
 
 
 def _send_from_buffer(buffer: bytes, size: int, offset: int) -> bytes:
