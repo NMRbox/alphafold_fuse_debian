@@ -342,7 +342,6 @@ def main():
                              default='/extra/alphafoldorig/proteomes/alphafold.sqlite',
                              help="Where to load metadata from [default: %default]")
     server.parse(values=server, errex=1)
-    print(server.fuse_args)
     server.prepare_sqlite()
     server.main()
 
