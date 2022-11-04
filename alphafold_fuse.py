@@ -109,15 +109,15 @@ class SQLReader:
         self.sql_connection.close()
 
     def get_pdb_from_pdb_substring(self, pdb_substring: str):
-        self.cursor.execute('SELECT pdb_id FROM pdb WHERE substr(pdb.pdb_id , 1, 2) = ?;', [pdb_substring])
+        self.cursor.execute('SELECT pdb_id FROM pdb WHERE substr(pdb.pdb_id , -3, 2) = ?;', [pdb_substring])
         return dirent_gen_from_list([_['pdb_id'] for _ in self.cursor.fetchall()])
 
     def get_uniprot_from_uniprot_substring(self, uniprot_substring: str):
-        self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE substr(uniprot_id, 1, 2) = ?', [uniprot_substring])
+        self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE substr(uniprot_id, -3, 2) = ?', [uniprot_substring])
         return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
 
     def get_taxonomy_from_taxonomy_substring(self, taxonomy_substring: str):
-        self.cursor.execute('SELECT DISTINCT(taxonomy_id) FROM taxonomy WHERE substr(taxonomy_id, 1, 2) = ?',
+        self.cursor.execute('SELECT DISTINCT(taxonomy_id) FROM taxonomy WHERE substr(taxonomy_id, -3, 2) = ?',
                             [taxonomy_substring])
         return dirent_gen_from_list([_['taxonomy_id'] for _ in self.cursor.fetchall()])
 
@@ -322,31 +322,8 @@ class AlphaFoldFS(fuse.Fuse):
         if (flags & accmode) != os.O_RDONLY:
             return -errno.EACCES
 
-
     def read(self, path, size, offset):
         return self._fake_filesystem_logging(path, 'read', size, offset)
-
-        # TODO: Implement check that path isn't one we don't know
-        # just in case something buggy calls open before calling getent. Return:
-        #     return -errno.ENOENT
-
-        # pc = path.split('/')[1:]
-        # if pc[0] == 'uniprot' and len(pc) == 2:
-        #     with self.sqlite as sql:
-        #         taxonomy = sql.get_taxonomy_from_uniprot(pc[1])
-        #         if taxonomy:
-        #             metadata, data = get_uniprot(self.alphafold_dir, pc[1], taxonomy)
-        #             return _send_from_buffer(data, size, offset)
-        #         else:
-        #             return -errno.ENOENT
-        # if pc[0] == 'taxonomy':
-        #     if len(pc) == 3:
-        #         metadata, data = get_uniprot(self.alphafold_dir, pc[2], pc[1])
-        #         return _send_from_buffer(data, size, offset)
-        #     else:
-        #         return -errno.ENOENT
-        #
-        # return -errno.ENOENT
 
 
 def main():
@@ -365,6 +342,7 @@ def main():
                              default='/extra/alphafoldorig/proteomes/alphafold.sqlite',
                              help="Where to load metadata from [default: %default]")
     server.parse(values=server, errex=1)
+    print(server.fuse_args)
     server.prepare_sqlite()
     server.main()
 
