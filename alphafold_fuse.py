@@ -47,8 +47,7 @@ class LocationAwareStat(fuse.Stat):
     of where to actually get the file so that SQLite doesn't need to be
     queried again. """
     tar_size: Optional[int] = None
-    taxonomy_id: Optional[str] = None
-    chunk: Optional[str] = None
+    path: Optional[str] = None
     offset: Optional[int] = None
     uniprot_id: Optional[str] = None
     version: Optional[str] = None
@@ -114,11 +113,12 @@ class SQLReader:
         self.sql_connection.close()
 
     def get_pdb_from_pdb_substring(self, pdb_substring: str):
-        self.cursor.execute('SELECT pdb_id FROM pdb WHERE substr(pdb.pdb_id , -3, 2) = ?;', [pdb_substring])
+        self.cursor.execute('SELECT DISTINCT(pdb_id) FROM pdb WHERE substr(pdb.pdb_id , -3, 2) = ?;', [pdb_substring])
         return dirent_gen_from_list([_['pdb_id'] for _ in self.cursor.fetchall()])
 
     def get_uniprot_from_uniprot_substring(self, uniprot_substring: str):
-        self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE substr(uniprot_id, -3, 2) = ?', [uniprot_substring])
+        self.cursor.execute('SELECT DISTINCT(uniprot_id) FROM files WHERE substr(uniprot_id, -3, 2) = ?',
+                            [uniprot_substring])
         return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
 
     def get_taxonomy_from_taxonomy_substring(self, taxonomy_substring: str):
@@ -131,9 +131,7 @@ class SQLReader:
         return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
 
     def get_uniprot_from_pdb(self, pdb):
-        self.cursor.execute('''
-SELECT taxonomy.uniprot_id FROM taxonomy INNER JOIN pdb ON taxonomy.uniprot_id = pdb.uniprot_id
-WHERE pdb.pdb_id = ?;''', [pdb])
+        self.cursor.execute('''SELECT uniprot_id FROM pdb WHERE pdb.pdb_id = ?;''', [pdb])
         return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
 
     @functools.lru_cache(10000)
@@ -147,8 +145,8 @@ WHERE pdb.pdb_id = ?;''', [pdb])
             version = None
         uniprot_id = uniprot_id.split('_')[0]
 
-        self.cursor.execute('SELECT taxonomy_id, chunk, offset, size, expanded_size,'
-                            'modification_time, version FROM taxonomy WHERE uniprot_id = ? ORDER BY version DESC',
+        self.cursor.execute('SELECT path, offset, size, expanded_size,modification_time, version '
+                            'FROM files WHERE uniprot_id = ? ORDER BY version DESC',
                             [uniprot_id])
         versions = self.cursor.fetchall()
         if not versions:
@@ -168,8 +166,7 @@ WHERE pdb.pdb_id = ?;''', [pdb])
         return LocationAwareStat(st_size=data['expanded_size'],
                                  st_mode=stat.S_IFREG | 0o444,
                                  tar_size=data['size'],
-                                 taxonomy_id=data['taxonomy_id'],
-                                 chunk=data['chunk'],
+                                 path=data['path'],
                                  offset=data['offset'],
                                  uniprot_id=uniprot_id,
                                  modification_time=data['modification_time'],
@@ -200,11 +197,10 @@ class AlphaFoldFS(fuse.Fuse):
 
     @functools.lru_cache(50)
     def _read_uniprot_contents(self, stat_info: LocationAwareStat) -> bytes:
-        logging.debug(f'Getting data for {stat_info.uniprot_id} from {stat_info.taxonomy_id} {stat_info.chunk} '
+        logging.debug(f'Getting data for {stat_info.uniprot_id} from {stat_info.path} '
                       f'{stat_info.offset} offset {stat_info.tar_size} bytes')
 
-        tar_path = os.path.join(self.alphafold_dir, f'proteome-tax_id-{stat_info.taxonomy_id}-{stat_info.chunk}_v3.tar')
-        with fs_open(tar_path, 'rb') as tf:
+        with fs_open(stat_info.path, 'rb') as tf:
             tf.seek(stat_info.offset+512)
             compressed_bytes = tf.read(stat_info.tar_size)
             return gzip.decompress(compressed_bytes)

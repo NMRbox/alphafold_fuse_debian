@@ -7,7 +7,7 @@ import sqlite3
 import struct
 import subprocess
 import time
-from typing import Tuple, Generator, List
+from typing import Tuple, Generator, List, Union, Literal
 
 import ciso8601
 
@@ -28,12 +28,15 @@ def get_files_from_tar(args: Tuple[str, str]) -> List[Tuple[str, str, str, str, 
     """ Returns a list of lists (rows) of records from one single tar file of data. Called by the multiprocessing
     code."""
     name, path = args
-    split = name.split('-')
-    taxonomy_id = split[2]
-    chunk = split[3].split("_")[0]
     files = []
+    split = name.split('-')
 
-    print(f"Processing {taxonomy_id}-{chunk}...")
+    # Unfortunately the update files are organized differently
+    taxonomy_id = None
+    if 'proteome' in name:
+        taxonomy_id = split[2]
+
+    print(f"Processing {name}...")
 
     # We manually read bytes from the tar file to determine the size of the gzipped files inside
     with open(path, 'rb') as raw:
@@ -58,11 +61,10 @@ def get_files_from_tar(args: Tuple[str, str]) -> List[Tuple[str, str, str, str, 
                     if size > 4194304:
                         raw.seek(offset + 512)
                         uncompressed_size = len(gzip.decompress(raw.read(size)))
-                        files.append((taxonomy_id, chunk, version, ns[1], offset, size, uncompressed_size, ctime))
+                        files.append((path, version, ns[1], offset, size, uncompressed_size, ctime))
                     else:
                         raw.seek((offset + 512) + (size - 4))
-                        files.append((taxonomy_id, chunk, version, ns[1], offset, size,
-                                      struct.unpack("<I", raw.read(4))[0], ctime))
+                        files.append((path, version, ns[1], offset, size, struct.unpack("<I", raw.read(4))[0], ctime))
                 offset += size + 512
                 offset = round_to_512(offset)
 
@@ -85,13 +87,14 @@ def index_files(args: argparse.Namespace) -> Generator[Tuple[str, str, str, int,
         """Iterates through the AlphaFold directory using scandir, which is a generator which spits out file
         names as needed. os.listdir() and similar get the full list of file names before any work starts being done."""
         count = 0
-        with os.scandir(args.alphafold_path) as it:
-            for entry in it:
-                if entry.name.endswith('.tar'):
-                    yield entry.name, entry.path
-                count += 1
-                if args.test and count > 10000:
-                    break
+        for alphafold_dir in args.alphafold_path:
+            with os.scandir(alphafold_dir) as scanner:
+                for entry in scanner:
+                    if entry.name.endswith('.tar'):
+                        yield entry.name, entry.path
+                    count += 1
+                    if args.test and count > 10000:
+                        break
 
     with multiprocessing.Pool(processes=250) as p:
         map = p.imap_unordered(get_files_from_tar, get_files_as_iterator(), 500)
@@ -100,7 +103,8 @@ def index_files(args: argparse.Namespace) -> Generator[Tuple[str, str, str, int,
                 yield row
 
 
-def get_id_mappings(download=False) -> Generator[Tuple[str, str], None, None]:
+def get_id_mappings(download=False, mode: Union[Literal['pdb'], Literal['taxonomy']] = 'pdb') -> \
+        Generator[Tuple[str, str], None, None]:
     """ Returns a generator which spits out PDB_id,UniProt_id tuples. """
 
     if not os.path.exists('idmapping_selected.tab.gz') or download:
@@ -114,14 +118,17 @@ def get_id_mappings(download=False) -> Generator[Tuple[str, str], None, None]:
     with gzip.open('idmapping_selected.tab.gz', 'r') as id_mapping:
         for line in id_mapping:
             datum = line.decode().split('\t')
-            try:
-                pdb_ids = set([_.split(":")[0] for _ in datum[5].split('; ')])
-                if pdb_ids == {''}:
-                    continue
-                for pdb in pdb_ids:
-                    yield pdb, datum[0]
-            except IndexError:
-                break
+            if mode == 'taxonomy':
+                yield datum[0], datum[12]
+            else:
+                try:
+                    pdb_ids = set([_.split(":")[0] for _ in datum[5].split('; ')])
+                    if pdb_ids == {''}:
+                        continue
+                    for pdb in pdb_ids:
+                        yield datum[0], pdb
+                except IndexError:
+                    break
 
 
 def create_or_update_sqlite(args: argparse.Namespace) -> None:
@@ -133,49 +140,66 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
         if args.rebuild_entries:
             # Set up taxonomy<->uniprot DB
             print("Doing Uniprot<->Taxonomy ID")
-            cursor.execute('DROP TABLE IF EXISTS taxonomy_tmp;')
-            cursor.execute('CREATE TABLE taxonomy_tmp (taxonomy_id text, chunk number, version text, uniprot_id text,'
+            cursor.execute('DROP TABLE IF EXISTS files_tmp;')
+            cursor.execute('CREATE TABLE files_tmp (path text, version text, uniprot_id text,'
                            'offset numeric, size numeric, expanded_size numeric, modification_time numeric);')
-            cursor.executemany("INSERT INTO taxonomy_tmp(taxonomy_id, chunk, version, uniprot_id, offset, size, "
-                               "expanded_size,"
-                               "modification_time) VALUES (?,?,?,?,?,?,?,?)",
+            cursor.executemany("INSERT INTO files_tmp(path, version, uniprot_id, offset, size, "
+                               "expanded_size, modification_time) VALUES (?,?,?,?,?,?,?)",
                                index_files(args))
             sqlite_conn.commit()
             print('Building UniProt location index...')
             cursor.execute('DROP INDEX IF EXISTS uni_index;')
-            cursor.execute('CREATE UNIQUE INDEX uni_index ON taxonomy_tmp(uniprot_id, version);')
-            print('Building taxonomy ID index...')
-            cursor.execute('DROP INDEX IF EXISTS taxon_index;')
-            cursor.execute('CREATE INDEX taxon_index ON taxonomy_tmp(taxonomy_id, uniprot_id);')
-            print('Building substring index on taxonomy...')
-            cursor.execute('DROP INDEX IF EXISTS taxon_substr;')
-            cursor.execute('CREATE INDEX taxon_substr ON taxonomy_tmp(substr(taxonomy_id, -3, 2));')
+            cursor.execute('CREATE INDEX uni_index ON files_tmp(uniprot_id);')
             print('Building substring index on UniProt...')
             cursor.execute('DROP INDEX IF EXISTS uniprot_substr;')
-            cursor.execute('CREATE INDEX uniprot_substr ON taxonomy_tmp(substr(uniprot_id, -3, 2));')
-            cursor.execute('DROP TABLE IF EXISTS taxonomy;')
-            cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
+            cursor.execute('CREATE INDEX uniprot_substr ON files_tmp(substr(uniprot_id, -3, 2));')
+            cursor.execute('DROP TABLE IF EXISTS files;')
+            cursor.execute('ALTER TABLE files_tmp RENAME TO files;')
             sqlite_conn.commit()
 
         # Set up the PDB<->uniprot DB
         if args.rebuild_pdb:
-            print("Doing PDB<->UniProt")
+            print("Doing PDB ID mapping table.")
             cursor.execute('DROP TABLE IF EXISTS pdb_tmp;')
-            cursor.execute('CREATE TABLE pdb_tmp (pdb_id text, uniprot_id text);')
-            cursor.executemany("INSERT INTO pdb_tmp(pdb_id, uniprot_id) values (?,?)",
-                               get_id_mappings(args.download_pdb))
+            cursor.execute('CREATE TABLE pdb_tmp (uniprot_id text, pdb_id text);')
+            cursor.executemany("INSERT INTO pdb_tmp(uniprot_id, pdb_id) values (?,?)",
+                               get_id_mappings(args.download_pdb, mode='pdb'))
             sqlite_conn.commit()
-            print('Building index on PDB IDs (pdb_id -> uniprot_id)...')
-            cursor.execute('DROP INDEX IF EXISTS pdb_uniprot_index;')
-            cursor.execute('CREATE UNIQUE INDEX pdb_uniprot_index ON pdb_tmp (pdb_id, uniprot_id);')
-            print('Building index on PDB IDs (uniprot_id -> pdb_id)...')
+
+            print("Doing taxonomy ID mapping table.")
+            cursor.execute('DROP TABLE IF EXISTS taxonomy_tmp;')
+            cursor.execute('CREATE TABLE taxonomy_tmp (uniprot_id text, taxonomy_id text);')
+            cursor.executemany("INSERT INTO taxonomy_tmp(uniprot_id, taxonomy_id) values (?,?)",
+                               get_id_mappings(args.download_pdb, mode='taxonomy'))
+            sqlite_conn.commit()
+
+            # PDB table indexes first
+            print('CREATE UNIQUE INDEX pdb_index ON pdb_tmp(pdb_id);')
+            cursor.execute('DROP INDEX IF EXISTS pdb_index;')
+            cursor.execute('CREATE UNIQUE INDEX pdb_index ON pdb_tmp(pdb_id);')
+            print('CREATE INDEX uniprot_pdb_index ON pdb_tmp(uniprot_id);')
             cursor.execute('DROP INDEX IF EXISTS uniprot_pdb_index;')
-            cursor.execute('CREATE INDEX uniprot_pdb_index ON pdb_tmp (uniprot_id);')
-            print('Building index on PDB ID substrings...')
+            cursor.execute('CREATE INDEX uniprot_pdb_index ON pdb_tmp(uniprot_id);')
+            print('CREATE INDEX pdb_substr ON pdb_tmp(substr(pdb_id, -3, 2));')
             cursor.execute('DROP INDEX IF EXISTS pdb_substr;')
-            cursor.execute('CREATE INDEX pdb_substr ON pdb_tmp (substr(pdb_id, -3, 2));')
-            cursor.execute('DROP TABLE IF EXISTS pdb;')
+            cursor.execute('CREATE INDEX pdb_substr ON pdb_tmp(substr(pdb_id, -3, 2));')
+
+            # Taxon table indexes
+            print('CREATE INDEX taxon_index ON taxonomy_tmp(taxonomy_id);')
+            cursor.execute('DROP INDEX IF EXISTS taxon_index;')
+            cursor.execute('CREATE INDEX taxon_index ON taxonomy_tmp(taxonomy_id);')
+            print('CREATE INDEX taxon_uniprot_index ON taxonomy_tmp(uniprot_id);')
+            cursor.execute('DROP INDEX IF EXISTS taxon_uniprot_index;')
+            cursor.execute('CREATE INDEX taxon_uniprot_index ON taxonomy_tmp(uniprot_id);')
+            print('CREATE INDEX taxon_substr ON taxonomy_tmp(substr(taxonomy_id, -3, 2));')
+            cursor.execute('DROP INDEX IF EXISTS taxon_substr;')
+            cursor.execute('CREATE INDEX taxon_substr ON taxonomy_tmp(substr(taxonomy_id, -3, 2));')
+
+            print('Moving tables into position...')
+            cursor.execute('DROP TABLE IF EXISTS pdb_tmp;')
             cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
+            cursor.execute('DROP TABLE IF EXISTS taxonomy_tmp;')
+            cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
             sqlite_conn.commit()
     print("Done!")
 
@@ -185,6 +209,7 @@ if __name__ == '__main__':
     parser.add_argument('-a', '--alphafold-path',
                         dest='alphafold_path',
                         action='store',
+                        nargs='+',
                         default='/extra/alphafoldorig/proteomes/',
                         help='Where the source AlphaFold proteomes folder is.')
     parser.add_argument('-s', '--sql-file',
