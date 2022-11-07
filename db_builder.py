@@ -176,7 +176,7 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
             # PDB table indexes first
             print('CREATE UNIQUE INDEX pdb_index ON pdb_tmp(pdb_id);')
             cursor.execute('DROP INDEX IF EXISTS pdb_index;')
-            cursor.execute('CREATE UNIQUE INDEX pdb_index ON pdb_tmp(pdb_id);')
+            cursor.execute('CREATE INDEX pdb_index ON pdb_tmp(pdb_id);')
             print('CREATE INDEX uniprot_pdb_index ON pdb_tmp(uniprot_id);')
             cursor.execute('DROP INDEX IF EXISTS uniprot_pdb_index;')
             cursor.execute('CREATE INDEX uniprot_pdb_index ON pdb_tmp(uniprot_id);')
