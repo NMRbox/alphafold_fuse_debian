@@ -196,9 +196,9 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
             cursor.execute('CREATE INDEX taxon_substr ON taxonomy_tmp(substr(taxonomy_id, -3, 2));')
 
             print('Moving tables into position...')
-            cursor.execute('DROP TABLE IF EXISTS pdb_tmp;')
+            cursor.execute('DROP TABLE IF EXISTS pdb;')
             cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
-            cursor.execute('DROP TABLE IF EXISTS taxonomy_tmp;')
+            cursor.execute('DROP TABLE IF EXISTS taxonomy;')
             cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
             sqlite_conn.commit()
     print("Done!")
