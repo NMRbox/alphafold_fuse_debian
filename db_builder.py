@@ -194,6 +194,12 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
             cursor.execute('DROP INDEX IF EXISTS taxon_substr;')
             cursor.execute('CREATE INDEX taxon_substr ON taxonomy_tmp(substr(taxonomy_id, -3, 2));')
 
+            # Now prepare the versions table
+            print('Preparing versions table...')
+            cursor.execute('CREATE TABLE IF NOT EXISTS versions (version text);')
+            cursor.execute('DELETE FROM versions;')
+            cursor.execute('INSERT INTO versions (version) SELECT DISTINCT(version) FROM files;')
+
             print('Moving tables into position...')
             cursor.execute('DROP TABLE IF EXISTS pdb;')
             cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
