@@ -113,7 +113,7 @@ class SQLReader:
         self.sql_connection.close()
 
     def get_valid_pdb_dirnames_l2(self, level_1: str):
-        self.cursor.execute('SELECT DISTINCT(substr(pdb_id,-2,1)) FROM pdb WHERE substr(pdb_id , -3, 1) = ?;',
+        self.cursor.execute('SELECT DISTINCT(substr(pdb_id,-2,1)) AS pdb_id FROM pdb WHERE substr(pdb_id , -3, 1) = ?;',
                             [level_1])
         return dirent_gen_from_list([_['pdb_id'] for _ in self.cursor.fetchall()])
 

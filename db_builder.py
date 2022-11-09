@@ -178,6 +178,10 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
             print('CREATE INDEX pdb_substr ON pdb_tmp(substr(pdb_id, -3, 2));')
             cursor.execute('DROP INDEX IF EXISTS pdb_substr;')
             cursor.execute('CREATE INDEX pdb_substr ON pdb_tmp(substr(pdb_id, -3, 2));')
+            # This is used for the second directory folder name lookup
+            print('CREATE INDEX pdb_2level ON pdb(substr(pdb_id, -3, 1));')
+            cursor.execute('DROP INDEX IF EXISTS pdb_2level;')
+            cursor.execute('CREATE INDEX pdb_2level ON pdb(substr(pdb_id, -3, 1));')
 
             # Taxon table indexes
             print('CREATE INDEX taxon_index ON taxonomy_tmp(taxonomy_id);')
