@@ -112,6 +112,11 @@ class SQLReader:
         self.cursor.close()
         self.sql_connection.close()
 
+    def get_valid_pdb_dirnames_l2(self, level_1: str):
+        self.cursor.execute('SELECT DISTINCT(substr(pdb_id,-2,1)) FROM pdb WHERE substr(pdb.pdb_id , -3, 2) = ?;',
+                            [level_1])
+        return dirent_gen_from_list([_['pdb_id'] for _ in self.cursor.fetchall()])
+
     def get_pdb_from_pdb_substring(self, pdb_substring: str):
         self.cursor.execute('SELECT DISTINCT(pdb_id) FROM pdb WHERE substr(pdb.pdb_id , -3, 2) = ?;', [pdb_substring])
         return dirent_gen_from_list([_['pdb_id'] for _ in self.cursor.fetchall()])
@@ -251,7 +256,11 @@ class AlphaFoldFS(fuse.Fuse):
                 if action == 'getattr':
                     return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
                 elif action == 'readdir':
-                    return path_config[pc[0]]()
+                    if pc[0] == 'pdb':
+                        with self.sqlite as sql:
+                            return sql.get_valid_pdb_dirnames_l2(pc[1])
+                    else:
+                        return path_config[pc[0]]()
             # Now handle actual data requests of one sort or another
             #  These are the direct reference short-cuts, bypassing the directory slices by character
             else:
