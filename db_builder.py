@@ -24,17 +24,12 @@ def round_to_512(number):
     return number + 512 - remainder
 
 
-def get_files_from_tar(args: Tuple[str, str]) -> List[Tuple[str, str, str, str, int, int, int, float]]:
+def get_files_from_tar(args: Tuple[str, str]) -> List[Tuple[str, str, str, int, int, int, float]]:
     """ Returns a list of lists (rows) of records from one single tar file of data. Called by the multiprocessing
     code."""
     name, path = args
     files = []
     split = name.split('-')
-
-    # Unfortunately the update files are organized differently
-    taxonomy_id = None
-    if 'proteome' in name:
-        taxonomy_id = split[2]
 
     print(f"Processing {name}...")
 
