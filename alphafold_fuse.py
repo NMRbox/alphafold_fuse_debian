@@ -47,7 +47,7 @@ class LocationAwareStat(fuse.Stat):
     of where to actually get the file so that SQLite doesn't need to be
     queried again. """
     tar_size: Optional[int] = None
-    path: Optional[str] = None
+    relpath: Optional[str] = None
     offset: Optional[int] = None
     uniprot_id: Optional[str] = None
     version: Optional[str] = None
@@ -103,7 +103,7 @@ def dirent_gen_from_result(result: List[sqlite3.Row]) -> Generator[fuse.Direntry
     and ['version'] on each item returned."""
 
     for record in result:
-        yield fuse.Direntry(f'{record["uniprot_id"]}_{record["version"]}.cif')
+        yield fuse.Direntry(f'{record["uniprot_id"]}_v{record["version"]}.cif')
 
 
 class SQLReader:
@@ -155,9 +155,13 @@ WHERE substr(uniprot_id, -3, 2) = ?
 GROUP BY uniprot_id''', [uniprot_substring, version])
         return dirent_gen_from_result(self.cursor.fetchall())
 
-    def get_taxonomy_from_taxonomy_substring(self, taxonomy_substring: str):
-        self.cursor.execute('SELECT DISTINCT(taxonomy_id) FROM taxonomy WHERE substr(taxonomy_id, -3, 2) = ?',
-                            [taxonomy_substring])
+    def get_taxonomy_from_taxonomy_substring(self, taxonomy_substring: str, version: str):
+        self.cursor.execute('''
+SELECT DISTINCT(taxonomy_id) AS taxonomy_id FROM taxonomy
+                                    LEFT JOIN files f on taxonomy.uniprot_id = f.uniprot_id
+                                    WHERE substr(taxonomy_id, -3, 2) = ?
+AND f.version <= ?;''',
+                            [taxonomy_substring, version])
         return dirent_gen_from_list([_['taxonomy_id'] for _ in self.cursor.fetchall()])
 
     def get_uniprot_from_taxonomy(self, taxonomy: str, version: str):
@@ -182,35 +186,37 @@ GROUP BY pdb.uniprot_id;''', [pdb.upper(), version])
         return dirent_gen_from_result(self.cursor.fetchall())
 
     @functools.lru_cache(10000)
-    def get_uniprot_info(self, uniprot_id) -> Union[LocationAwareStat, Literal[-2]]:
+    def get_uniprot_info(self, uniprot_id, max_version: Optional[int] = None) -> Union[LocationAwareStat, Literal[-2]]:
         """ Load info for one particular UniProt ID from SQLite. Cache recent results. """
 
         uniprot_id = uniprot_id.replace('.cif', '')
         if '_' in uniprot_id:
-            version = uniprot_id.split('_')[1]
+            version = uniprot_id.split('_')[1].replace('v', '')
+            # They can't request a newer version than the FS allows
+            if version > max_version:
+                return -2
         else:
             version = None
         uniprot_id = uniprot_id.split('_')[0]
 
-        self.cursor.execute('SELECT path, offset, size, expanded_size,modification_time, version '
-                            'FROM files WHERE uniprot_id = ? ORDER BY version DESC',
-                            [uniprot_id])
-        versions = self.cursor.fetchall()
-        if not versions:
-            return -2
+        sql = 'SELECT relpath, offset, size, expanded_size,modification_time, max(version) AS version FROM files ' \
+              'WHERE uniprot_id = ?'
+        args = [uniprot_id]
+        if version:
+            sql += ' AND version = ?'
+            args.append(version)
+        if max_version:
+            sql += ' AND version <= ?'
+            args.append(max_version)
 
-        data = versions[0]
-        for release in versions:
-            if release['version'] == version:
-                data = release
-                break
-        # If a version is specified, make sure it matches. If no version, return the first file.
-        if version and data['version'] != version:
+        self.cursor.execute(sql, args)
+        data = self.cursor.fetchone()
+        if not data:
             return -2
 
         return LocationAwareStat(st_size=data['expanded_size'],
                                  tar_size=data['size'],
-                                 path=data['path'],
+                                 relpath=data['relpath'],
                                  offset=data['offset'],
                                  uniprot_id=uniprot_id,
                                  modification_time=data['modification_time'],
@@ -235,7 +241,7 @@ class AlphaFoldFS(fuse.Fuse):
         fuse.Fuse.__init__(self, *args, **kw)
         # This gets overwritten (inside the Fuse code) if specified in the arguments
         self.versions = []
-        self.sqlpath = '/extras/alphafoldorig/proteomes/'
+        self.sqlpath = '/extras/alphafold/'
         self.sqlite = None
 
     def prepare_sqlite(self):
@@ -245,10 +251,10 @@ class AlphaFoldFS(fuse.Fuse):
 
     @functools.lru_cache(50)
     def _read_uniprot_contents(self, stat_info: LocationAwareStat) -> bytes:
-        logging.debug(f'Getting data for {stat_info.uniprot_id} from {stat_info.path} '
+        logging.debug(f'Getting data for {stat_info.uniprot_id} from {stat_info.relpath} '
                       f'{stat_info.offset} offset {stat_info.tar_size} bytes')
 
-        with fs_open(stat_info.path, 'rb') as tf:
+        with fs_open(os.path.join(self.alphafold_dir, stat_info.relpath), 'rb') as tf:
             tf.seek(stat_info.offset+512)
             compressed_bytes = tf.read(stat_info.tar_size)
             return gzip.decompress(compressed_bytes)
@@ -299,7 +305,7 @@ class AlphaFoldFS(fuse.Fuse):
                 return dirent_gen_from_list(['pdb', 'uniprot', 'taxonomy'])
 
         # Figure out the version, and shift the path
-        version = pc[0]
+        version = pc[0].replace('v', '')
         pc = pc[1:]
 
         # First level ('/uniprot')
@@ -328,7 +334,7 @@ class AlphaFoldFS(fuse.Fuse):
             else:
                 if pc[0] == 'uniprot':
                     with self.sqlite as sql:
-                        stat_info = sql.get_uniprot_info(uniprot_id=pc[1])
+                        stat_info = sql.get_uniprot_info(uniprot_id=pc[1], max_version=version)
                         if action == 'getattr':
                             return stat_info
                         elif action == 'read':
@@ -354,7 +360,7 @@ class AlphaFoldFS(fuse.Fuse):
                 elif action == 'readdir':
                     if pc[0] == 'taxonomy':
                         with self.sqlite as sql:
-                            return sql.get_taxonomy_from_taxonomy_substring(f'{pc[1]}{pc[2]}')
+                            return sql.get_taxonomy_from_taxonomy_substring(f'{pc[1]}{pc[2]}', version=version)
                     elif pc[0] == 'uniprot':
                         with self.sqlite as sql:
                             return sql.get_uniprot_from_uniprot_substring(f'{pc[1]}{pc[2]}', version=version)
@@ -363,7 +369,7 @@ class AlphaFoldFS(fuse.Fuse):
                             return sql.get_pdb_from_pdb_substring(f'{pc[1]}{pc[2]}', version=version)
             if pc[0] == 'taxonomy':
                 with self.sqlite as sql:
-                    stat_info = sql.get_uniprot_info(uniprot_id=pc[2])
+                    stat_info = sql.get_uniprot_info(uniprot_id=pc[2], max_version=version)
                 if action == 'read':
                     return _send_from_buffer(self._read_uniprot_contents(stat_info), size, offset)
                 elif action == 'getattr':
@@ -374,7 +380,7 @@ class AlphaFoldFS(fuse.Fuse):
             if pc[0] == 'uniprot':
                 # For uniprot, this is the file level
                 with self.sqlite as sql:
-                    stat_info = sql.get_uniprot_info(uniprot_id=pc[3])
+                    stat_info = sql.get_uniprot_info(uniprot_id=pc[3], max_version=version)
                 if action == 'getattr':
                     return stat_info
                 elif action == 'read':
@@ -395,7 +401,7 @@ class AlphaFoldFS(fuse.Fuse):
         elif len(pc) == 5:
             # At this level, it's always a uniprot id
             with self.sqlite as sql:
-                stat_info = sql.get_uniprot_info(uniprot_id=pc[4])
+                stat_info = sql.get_uniprot_info(uniprot_id=pc[4], max_version=version)
             if action == 'getattr':
                 return stat_info
             elif action == 'read':
@@ -429,11 +435,12 @@ def main():
                          usage=usage,
                          dash_s_do='setsingle')
 
-    server.parser.add_option(mountopt="alphafold_dir", metavar="ALPHAFOLD_PATH",
-                             default='/extra/alphafoldorig/proteomes/',
+    server.parser.add_option(mountopt="alphafold_dir",
+                             metavar="ALPHAFOLD_PATH",
+                             default='/extra/alphafold/',
                              help="Source of AlphaFold tar files [default: %default]")
     server.parser.add_option(mountopt="sqlpath", metavar="SQL_PATH",
-                             default='/extra/alphafoldorig/proteomes/alphafold.sqlite',
+                             default='/extra/alphafold/alphafold.sqlite',
                              help="Where to load metadata from [default: %default]")
     server.parse(values=server, errex=1)
     server.prepare_sqlite()
