@@ -186,7 +186,8 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
             cursor.execute('CREATE INDEX pdb_2level ON pdb(substr(pdb_id, -3, 1));')
 
             print("Creating taxonomy ID lookup table...")
-            cursor.execute('CREATE TABLE taxonomy_unique_tmp(taxonomy_id int PRIMARY KEY) WITHOUT ROWID;')
+            cursor.execute('DROP TABLE IF EXISTS taxonomy_unique_tmp;')
+            cursor.execute('CREATE TABLE taxonomy_unique_tmp(taxonomy_id text PRIMARY KEY) WITHOUT ROWID;')
             cursor.execute('INSERT INTO taxonomy_unique_tmp(taxonomy_id) SELECT DISTINCT(taxonomy_id) FROM taxonomy;')
             print('CREATE INDEX taxon_substr ON taxonomy_unique_tmp(substr(taxonomy_id, -3, 2));')
             cursor.execute('DROP INDEX IF EXISTS taxon_substr;')

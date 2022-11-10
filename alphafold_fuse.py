@@ -159,9 +159,7 @@ GROUP BY uniprot_id''', [uniprot_substring, version])
         return dirent_gen_from_result(self.cursor.fetchall())
 
     def get_taxonomy_from_taxonomy_substring(self, taxonomy_substring: str):
-        self.cursor.execute('''
-SELECT DISTINCT(taxonomy_id) AS taxonomy_id FROM taxonomy_unique
-                                    WHERE substr(taxonomy_id, -3, 2) = ?;''',
+        self.cursor.execute('SELECT taxonomy_id FROM taxonomy_unique WHERE substr(taxonomy_id, -3, 2) = ?;',
                             [taxonomy_substring])
         return dirent_gen_from_list([_['taxonomy_id'] for _ in self.cursor.fetchall()])
 
@@ -187,7 +185,7 @@ GROUP BY pdb.uniprot_id;''', [pdb.upper(), version])
         return dirent_gen_from_result(self.cursor.fetchall())
 
     @functools.lru_cache(10000)
-    def get_uniprot_info(self, uniprot_id, max_version: Optional[int] = None) -> Union[LocationAwareStat, Literal[-2]]:
+    def get_uniprot_info(self, uniprot_id, max_version: Optional[str] = None) -> Union[LocationAwareStat, Literal[-2]]:
         """ Load info for one particular UniProt ID from SQLite. Cache recent results. """
 
         uniprot_id = uniprot_id.replace('.cif', '')
@@ -243,11 +241,9 @@ class AlphaFoldFS(fuse.Fuse):
         # This gets overwritten (inside the Fuse code) if specified in the arguments
         self.versions = []
         self.sqlpath = '/extras/alphafold/'
-        self.sqlite = None
 
-    def prepare_sqlite(self):
-        self.sqlite = SQLReader(self.sqlpath)
-        with self.sqlite as sql:
+    def prepare_fs(self):
+        with SQLReader(self.sqlpath) as sql:
             self.versions = sql.get_versions()
 
     @functools.lru_cache(50)
@@ -326,7 +322,7 @@ class AlphaFoldFS(fuse.Fuse):
                     return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
                 elif action == 'readdir':
                     if pc[0] == 'pdb':
-                        with self.sqlite as sql:
+                        with SQLReader(self.sqlpath) as sql:
                             return sql.get_valid_pdb_dirnames_l2(pc[1], version)
                     else:
                         return path_config[pc[0]]()
@@ -334,7 +330,7 @@ class AlphaFoldFS(fuse.Fuse):
             #  These are the direct reference short-cuts, bypassing the directory slices by character
             else:
                 if pc[0] == 'uniprot':
-                    with self.sqlite as sql:
+                    with SQLReader(self.sqlpath) as sql:
                         stat_info = sql.get_uniprot_info(uniprot_id=pc[1], max_version=version)
                         if action == 'getattr':
                             return stat_info
@@ -342,13 +338,13 @@ class AlphaFoldFS(fuse.Fuse):
                             return _send_from_buffer(self._read_uniprot_contents(stat_info), size, offset)
                 elif pc[0] == 'taxonomy':
                     if action == 'readdir':
-                        with self.sqlite as sql:
+                        with SQLReader(self.sqlpath) as sql:
                             return sql.get_uniprot_from_taxonomy(pc[1], version=version)
                     elif action == 'getattr':
                         return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
                 elif pc[0] == 'pdb':
                     if action == 'readdir':
-                        with self.sqlite as sql:
+                        with SQLReader(self.sqlpath) as sql:
                             return sql.get_uniprot_from_pdb(pc[1], version=version)
                     elif action == 'getattr':
                         return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
@@ -360,16 +356,16 @@ class AlphaFoldFS(fuse.Fuse):
                     return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
                 elif action == 'readdir':
                     if pc[0] == 'taxonomy':
-                        with self.sqlite as sql:
+                        with SQLReader(self.sqlpath) as sql:
                             return sql.get_taxonomy_from_taxonomy_substring(f'{pc[1]}{pc[2]}')
                     elif pc[0] == 'uniprot':
-                        with self.sqlite as sql:
+                        with SQLReader(self.sqlpath) as sql:
                             return sql.get_uniprot_from_uniprot_substring(f'{pc[1]}{pc[2]}', version=version)
                     elif pc[0] == 'pdb':
-                        with self.sqlite as sql:
+                        with SQLReader(self.sqlpath) as sql:
                             return sql.get_pdb_from_pdb_substring(f'{pc[1]}{pc[2]}', version=version)
             if pc[0] == 'taxonomy':
-                with self.sqlite as sql:
+                with SQLReader(self.sqlpath) as sql:
                     stat_info = sql.get_uniprot_info(uniprot_id=pc[2], max_version=version)
                 if action == 'read':
                     return _send_from_buffer(self._read_uniprot_contents(stat_info), size, offset)
@@ -380,7 +376,7 @@ class AlphaFoldFS(fuse.Fuse):
         elif len(pc) == 4:
             if pc[0] == 'uniprot':
                 # For uniprot, this is the file level
-                with self.sqlite as sql:
+                with SQLReader(self.sqlpath) as sql:
                     stat_info = sql.get_uniprot_info(uniprot_id=pc[3], max_version=version)
                 if action == 'getattr':
                     return stat_info
@@ -393,16 +389,15 @@ class AlphaFoldFS(fuse.Fuse):
 
             if action == 'readdir':
                 if pc[0] == 'taxonomy':
-                    with self.sqlite as sql:
+                    with SQLReader(self.sqlpath) as sql:
                         return sql.get_uniprot_from_taxonomy(pc[3], version=version)
                 elif pc[0] == 'pdb':
-                    with self.sqlite as sql:
-                        result = sql.get_uniprot_from_pdb(pc[3], version=version)
-                    return result
+                    with SQLReader(self.sqlpath) as sql:
+                        return sql.get_uniprot_from_pdb(pc[3], version=version)
         # Of the form /pdb/2/D/2DOG/C4K3Z3
         elif len(pc) == 5:
             # At this level, it's always a uniprot id
-            with self.sqlite as sql:
+            with SQLReader(self.sqlpath) as sql:
                 stat_info = sql.get_uniprot_info(uniprot_id=pc[4], max_version=version)
             if action == 'getattr':
                 return stat_info
@@ -445,7 +440,7 @@ def main():
                              default='/extra/alphafold/alphafold.sqlite',
                              help="Where to load metadata from [default: %default]")
     server.parse(values=server, errex=1)
-    server.prepare_sqlite()
+    server.prepare_fs()
     server.main()
 
 
