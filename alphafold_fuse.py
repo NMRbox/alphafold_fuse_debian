@@ -8,6 +8,7 @@ import os
 import sqlite3
 import stat
 import tarfile
+import typing
 from string import ascii_uppercase, digits
 from typing import Union, Literal, Optional, Generator, List
 
@@ -264,7 +265,10 @@ class AlphaFoldFS(fuse.Fuse):
                                  size: Optional[int] = None, offset: Optional[int] = None) -> \
             Union[fuse.Stat, Literal[-2], Generator[fuse.Direntry, None, None], bytes]:
         result = self._fake_filesystem(path, action, size, offset)
-        logging.debug(f'{action}: {path, size, offset, result}')
+        if isinstance(result, typing.Generator):
+            logging.debug(f'{action}: {path, size, offset, list(result)}')
+        else:
+            logging.debug(f'{action}: {path, size, offset, result}')
         return result
 
     def _fake_filesystem(self, path: str,
