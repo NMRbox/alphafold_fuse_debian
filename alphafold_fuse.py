@@ -75,6 +75,8 @@ class LocationAwareStat(fuse.Stat):
             self.st_mode = kw['st_mode']
             if kw['st_mode'] == (stat.S_IFDIR | 0o555):
                 self.st_nlink = 2
+        else:
+            self.st_mode = stat.S_IFREG | 0o444
 
         self.st_gid = os.getgid()
         self.st_uid = os.getuid()
@@ -169,7 +171,6 @@ class SQLReader:
             return -2
 
         return LocationAwareStat(st_size=data['expanded_size'],
-                                 st_mode=stat.S_IFREG | 0o444,
                                  tar_size=data['size'],
                                  path=data['path'],
                                  offset=data['offset'],
@@ -235,10 +236,18 @@ class AlphaFoldFS(fuse.Fuse):
             if action == 'getattr':
                 return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
             elif action == 'readdir':
-                return dirent_gen_from_list(['uniprot', 'pdb', 'taxonomy'])
+                return dirent_gen_from_list(['uniprot', 'pdb', 'taxonomy', 'README.md'])
 
-        if pc[0] not in ['uniprot', 'pdb', 'taxonomy']:
+        if pc[0] not in ['uniprot', 'pdb', 'taxonomy', 'README.md']:
             return -2
+
+        if pc[0] == 'README.md':
+            if action == 'getattr':
+                with open('README.md', 'r') as readme:
+                    return LocationAwareStat(st_size=len(readme.read()))
+            if action == 'read':
+                with open('README.md', 'rb') as readme:
+                    return _send_from_buffer(readme.read(), size, offset)
 
         # First level ('/uniprot')
         if len(pc) == 1:
