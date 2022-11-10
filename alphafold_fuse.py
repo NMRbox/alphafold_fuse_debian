@@ -237,6 +237,7 @@ class AlphaFoldFS(fuse.Fuse):
         # This gets overwritten (inside the Fuse code) if specified in the arguments
         self.versions = []
         self.sqlpath = '/extras/alphafold/'
+        self.verbose = None
 
     def prepare_fs(self):
         with SQLReader(self.sqlpath) as sql:
@@ -435,11 +436,16 @@ def main():
     server.parser.add_option(mountopt="sqlpath", metavar="SQL_PATH",
                              default='/extra/alphafold/alphafold.sqlite',
                              help="Where to load metadata from [default: %default]")
+    server.parser.add_option(mountopt="verbose",
+                             default=False,
+                             action='store_true',
+                             help="Specify to log actions to stdout. Use with '-f' to see log. Useful for debugging.")
     server.parse(values=server, errex=1)
     server.prepare_fs()
+    if server.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
     server.main()
 
 
 if __name__ == '__main__':
-    logging.getLogger().setLevel(logging.DEBUG)
     main()
