@@ -148,7 +148,7 @@ WHERE substr(pdb.pdb_id, -3, 2) = ?
 
     def get_uniprot_from_uniprot_substring(self, uniprot_substring: str, version: str):
         self.cursor.execute('''
-SELECT uniprot_id, max(version) AS version
+SELECT uniprot_id, MAX(version) AS version
 FROM files
 WHERE substr(uniprot_id, -3, 2) = ?
   AND version <= ?
@@ -162,7 +162,7 @@ GROUP BY uniprot_id''', [uniprot_substring, version])
 
     def get_uniprot_from_taxonomy(self, taxonomy: str, version: str):
         self.cursor.execute('''
-SELECT taxonomy.uniprot_id, max(files.version)
+SELECT taxonomy.uniprot_id, MAX(files.version) AS version
 FROM taxonomy
          LEFT JOIN files ON taxonomy.uniprot_id = files.uniprot_id
 WHERE taxonomy_id = ?
@@ -172,7 +172,7 @@ GROUP BY taxonomy.uniprot_id;''', [taxonomy, version])
 
     def get_uniprot_from_pdb(self, pdb: str, version: str):
         self.cursor.execute('''
-SELECT pdb.uniprot_id, MAX(files.version)
+SELECT pdb.uniprot_id, MAX(files.version) AS version
 FROM pdb
          LEFT JOIN files ON pdb.uniprot_id = files.uniprot_id
 WHERE pdb.pdb_id = ?
@@ -354,7 +354,7 @@ class AlphaFoldFS(fuse.Fuse):
                 elif action == 'readdir':
                     if pc[0] == 'taxonomy':
                         with self.sqlite as sql:
-                            return sql.get_taxonomy_from_taxonomy_substring(f'{pc[1]}{pc[2]}', version=version)
+                            return sql.get_taxonomy_from_taxonomy_substring(f'{pc[1]}{pc[2]}')
                     elif pc[0] == 'uniprot':
                         with self.sqlite as sql:
                             return sql.get_uniprot_from_uniprot_substring(f'{pc[1]}{pc[2]}', version=version)
