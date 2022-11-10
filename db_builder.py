@@ -153,6 +153,11 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
             cursor.execute('CREATE INDEX uniprot_substr ON files_tmp(substr(uniprot_id, -3, 2));')
             cursor.execute('DROP TABLE IF EXISTS files;')
             cursor.execute('ALTER TABLE files_tmp RENAME TO files;')
+            # Now prepare the versions table
+            print('Preparing versions table...')
+            cursor.execute('CREATE TABLE IF NOT EXISTS versions (version int);')
+            cursor.execute('DELETE FROM versions;')
+            cursor.execute('INSERT INTO versions (version) SELECT DISTINCT(version) FROM files;')
             sqlite_conn.commit()
 
         # Set up the PDB<->uniprot DB
@@ -197,12 +202,6 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
             print('CREATE INDEX taxon_index ON taxonomy_tmp(taxonomy_id);')
             cursor.execute('DROP INDEX IF EXISTS taxon_index;')
             cursor.execute('CREATE INDEX taxon_index ON taxonomy_tmp(taxonomy_id);')
-
-            # Now prepare the versions table
-            print('Preparing versions table...')
-            cursor.execute('CREATE TABLE IF NOT EXISTS versions (version int);')
-            cursor.execute('DELETE FROM versions;')
-            cursor.execute('INSERT INTO versions (version) SELECT DISTINCT(version) FROM files;')
 
             print('Moving tables into position...')
             cursor.execute('DROP TABLE IF EXISTS pdb;')
