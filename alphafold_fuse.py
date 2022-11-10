@@ -235,9 +235,9 @@ class AlphaFoldFS(fuse.Fuse):
             if action == 'getattr':
                 return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
             elif action == 'readdir':
-                return dirent_gen_from_list(['.', '..', 'uniprot', 'pdb', 'taxonomy'])
+                return dirent_gen_from_list(['uniprot', 'pdb', 'taxonomy'])
 
-        if pc[0] not in ['uniprot', 'pdb', 'taxonomy', '..', '.']:
+        if pc[0] not in ['uniprot', 'pdb', 'taxonomy']:
             return -2
 
         # First level ('/uniprot')
