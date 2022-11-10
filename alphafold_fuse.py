@@ -7,8 +7,6 @@ import logging
 import os
 import sqlite3
 import stat
-import tarfile
-import typing
 from string import ascii_uppercase, digits
 from typing import Union, Literal, Optional, Generator, List
 
@@ -126,7 +124,7 @@ class SQLReader:
 
     def get_versions(self):
         self.cursor.execute('SELECT DISTINCT(version) as version FROM versions;')
-        return [_['version'] for _ in self.cursor.fetchall()]
+        return [f"v{_['version']}" for _ in self.cursor.fetchall()]
 
     def get_valid_pdb_dirnames_l2(self, level_1: str, version: str):
         self.cursor.execute('''
@@ -265,12 +263,7 @@ class AlphaFoldFS(fuse.Fuse):
                                  size: Optional[int] = None, offset: Optional[int] = None) -> \
             Union[fuse.Stat, Literal[-2], Generator[fuse.Direntry, None, None], bytes]:
         result = self._fake_filesystem(path, action, size, offset)
-        if isinstance(result, typing.Generator):
-            list_version = list(result)
-            logging.debug(f'{action}: {path, size, offset, [_.name for _ in list_version]}')
-            return (_ for _ in list_version)
-        else:
-            logging.debug(f'{action}: {path, size, offset, result}')
+        logging.debug(f'{action}: {path, size, offset, result}')
         return result
 
     def _fake_filesystem(self, path: str,
