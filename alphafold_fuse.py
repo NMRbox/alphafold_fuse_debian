@@ -395,7 +395,8 @@ class AlphaFoldFS(fuse.Fuse):
                         return sql.get_uniprot_from_taxonomy(pc[3], version=version)
                 elif pc[0] == 'pdb':
                     with self.sqlite as sql:
-                        return sql.get_uniprot_from_pdb(pc[3], version=version)
+                        result = sql.get_uniprot_from_pdb(pc[3], version=version)
+                    return result
         # Of the form /pdb/2/D/2DOG/C4K3Z3
         elif len(pc) == 5:
             # At this level, it's always a uniprot id
