@@ -158,13 +158,11 @@ WHERE substr(uniprot_id, -3, 2) = ?
 GROUP BY uniprot_id''', [uniprot_substring, version])
         return dirent_gen_from_result(self.cursor.fetchall())
 
-    def get_taxonomy_from_taxonomy_substring(self, taxonomy_substring: str, version: str):
+    def get_taxonomy_from_taxonomy_substring(self, taxonomy_substring: str):
         self.cursor.execute('''
 SELECT DISTINCT(taxonomy_id) AS taxonomy_id FROM taxonomy_unique
-                                    LEFT JOIN files f on taxonomy.uniprot_id = f.uniprot_id
-                                    WHERE substr(taxonomy_id, -3, 2) = ?
-AND f.version <= ?;''',
-                            [taxonomy_substring, version])
+                                    WHERE substr(taxonomy_id, -3, 2) = ?;''',
+                            [taxonomy_substring])
         return dirent_gen_from_list([_['taxonomy_id'] for _ in self.cursor.fetchall()])
 
     def get_uniprot_from_taxonomy(self, taxonomy: str, version: str):
@@ -363,7 +361,7 @@ class AlphaFoldFS(fuse.Fuse):
                 elif action == 'readdir':
                     if pc[0] == 'taxonomy':
                         with self.sqlite as sql:
-                            return sql.get_taxonomy_from_taxonomy_substring(f'{pc[1]}{pc[2]}', version=version)
+                            return sql.get_taxonomy_from_taxonomy_substring(f'{pc[1]}{pc[2]}')
                     elif pc[0] == 'uniprot':
                         with self.sqlite as sql:
                             return sql.get_uniprot_from_uniprot_substring(f'{pc[1]}{pc[2]}', version=version)
