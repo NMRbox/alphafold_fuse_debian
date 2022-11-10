@@ -97,6 +97,15 @@ def dirent_gen_from_list(original_list: List[str]) -> Generator[fuse.Direntry, N
         yield fuse.Direntry(record)
 
 
+def dirent_gen_from_result(result: List[sqlite3.Row]) -> Generator[fuse.Direntry, None, None]:
+    """ Presents the result of the query like UniProt mmCIF files, including version.
+    The input should be a cursor which when iterated through provides ['uniprot_id']
+    and ['version'] on each item returned."""
+
+    for record in result:
+        yield fuse.Direntry(f'{record["uniprot_id"]}_{record["version"]}.cif')
+
+
 class SQLReader:
     """ A class to help get data out of the SQLite database. """
 
@@ -114,32 +123,63 @@ class SQLReader:
         self.cursor.close()
         self.sql_connection.close()
 
-    def get_valid_pdb_dirnames_l2(self, level_1: str):
-        self.cursor.execute('SELECT DISTINCT(substr(pdb_id,-2,1)) AS pdb_id FROM pdb WHERE substr(pdb_id , -3, 1) = ?;',
-                            [level_1])
+    def get_versions(self):
+        self.cursor.execute('SELECT DISTINCT(version) as version FROM versions;')
+        return [_['version'] for _ in self.cursor.fetchall()]
+
+    def get_valid_pdb_dirnames_l2(self, level_1: str, version: str):
+        self.cursor.execute('''
+SELECT DISTINCT(substr(pdb_id,-2,1)) AS pdb_id FROM pdb
+                                               LEFT JOIN files f ON pdb.uniprot_id = f.uniprot_id
+                                               WHERE substr(pdb_id , -3, 1) = ?
+                                               AND version <= ?;''',
+                            [level_1.upper(), version])
         return dirent_gen_from_list([_['pdb_id'] for _ in self.cursor.fetchall()])
 
-    def get_pdb_from_pdb_substring(self, pdb_substring: str):
-        self.cursor.execute('SELECT DISTINCT(pdb_id) FROM pdb WHERE substr(pdb.pdb_id , -3, 2) = ?;', [pdb_substring])
+    def get_pdb_from_pdb_substring(self, pdb_substring: str, version: str):
+        self.cursor.execute('''
+SELECT DISTINCT (pdb_id) AS pdb_id
+FROM pdb
+         INNER JOIN files f ON pdb.uniprot_id = f.uniprot_id
+WHERE substr(pdb.pdb_id, -3, 2) = ?
+  AND f.version <= ?;''',
+                            [pdb_substring.upper(), version])
         return dirent_gen_from_list([_['pdb_id'] for _ in self.cursor.fetchall()])
 
-    def get_uniprot_from_uniprot_substring(self, uniprot_substring: str):
-        self.cursor.execute('SELECT DISTINCT(uniprot_id) FROM files WHERE substr(uniprot_id, -3, 2) = ?',
-                            [uniprot_substring])
-        return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
+    def get_uniprot_from_uniprot_substring(self, uniprot_substring: str, version: str):
+        self.cursor.execute('''
+SELECT uniprot_id, max(version) AS version
+FROM files
+WHERE substr(uniprot_id, -3, 2) = ?
+  AND version <= ?
+GROUP BY uniprot_id''', [uniprot_substring, version])
+        return dirent_gen_from_result(self.cursor.fetchall())
 
     def get_taxonomy_from_taxonomy_substring(self, taxonomy_substring: str):
         self.cursor.execute('SELECT DISTINCT(taxonomy_id) FROM taxonomy WHERE substr(taxonomy_id, -3, 2) = ?',
                             [taxonomy_substring])
         return dirent_gen_from_list([_['taxonomy_id'] for _ in self.cursor.fetchall()])
 
-    def get_uniprot_from_taxonomy(self, taxonomy):
-        self.cursor.execute('SELECT uniprot_id FROM taxonomy WHERE taxonomy_id = ?', [taxonomy])
-        return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
+    def get_uniprot_from_taxonomy(self, taxonomy: str, version: str):
+        self.cursor.execute('''
+SELECT taxonomy.uniprot_id, max(files.version)
+FROM taxonomy
+         LEFT JOIN files ON taxonomy.uniprot_id = files.uniprot_id
+WHERE taxonomy_id = ?
+  AND files.version <= ?
+GROUP BY taxonomy.uniprot_id;''', [taxonomy, version])
+        return dirent_gen_from_result(self.cursor.fetchall())
 
-    def get_uniprot_from_pdb(self, pdb):
-        self.cursor.execute('''SELECT uniprot_id FROM pdb WHERE pdb.pdb_id = ?;''', [pdb])
-        return dirent_gen_from_list([_['uniprot_id'] for _ in self.cursor.fetchall()])
+    def get_uniprot_from_pdb(self, pdb: str, version: str):
+        self.cursor.execute('''
+SELECT pdb.uniprot_id, MAX(files.version)
+FROM pdb
+         LEFT JOIN files ON pdb.uniprot_id = files.uniprot_id
+WHERE pdb.pdb_id = ?
+  AND files.version <= ?
+GROUP BY pdb.uniprot_id;''', [pdb.upper(), version])
+
+        return dirent_gen_from_result(self.cursor.fetchall())
 
     @functools.lru_cache(10000)
     def get_uniprot_info(self, uniprot_id) -> Union[LocationAwareStat, Literal[-2]]:
@@ -158,8 +198,6 @@ class SQLReader:
         versions = self.cursor.fetchall()
         if not versions:
             return -2
-
-        print(f'getting version {version}')
 
         data = versions[0]
         for release in versions:
@@ -191,15 +229,19 @@ def _send_from_buffer(buffer: bytes, size: int, offset: int) -> bytes:
 
 
 class AlphaFoldFS(fuse.Fuse):
+    versions: List[str]
 
     def __init__(self, *args, **kw):
         fuse.Fuse.__init__(self, *args, **kw)
         # This gets overwritten (inside the Fuse code) if specified in the arguments
+        self.versions = []
         self.sqlpath = '/extras/alphafoldorig/proteomes/'
         self.sqlite = None
 
     def prepare_sqlite(self):
         self.sqlite = SQLReader(self.sqlpath)
+        with self.sqlite as sql:
+            self.versions = sql.get_versions()
 
     @functools.lru_cache(50)
     def _read_uniprot_contents(self, stat_info: LocationAwareStat) -> bytes:
@@ -236,11 +278,11 @@ class AlphaFoldFS(fuse.Fuse):
             if action == 'getattr':
                 return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
             elif action == 'readdir':
-                return dirent_gen_from_list(['uniprot', 'pdb', 'taxonomy', 'README.md'])
-
-        if pc[0] not in ['uniprot', 'pdb', 'taxonomy', 'README.md']:
+                return dirent_gen_from_list(self.versions + ['README.md'])
+        if pc[0] not in self.versions + ['README.md']:
             return -2
 
+        # They want the readme
         if pc[0] == 'README.md':
             if action == 'getattr':
                 with open('README.md', 'r') as readme:
@@ -248,6 +290,17 @@ class AlphaFoldFS(fuse.Fuse):
             if action == 'read':
                 with open('README.md', 'rb') as readme:
                     return _send_from_buffer(readme.read(), size, offset)
+
+        # Handle the version part of the FS path
+        if len(pc) == 1:
+            if action == 'getattr':
+                return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
+            elif action == 'readdir':
+                return dirent_gen_from_list(['pdb', 'uniprot', 'taxonomy'])
+
+        # Figure out the version, and shift the path
+        version = pc[0]
+        pc = pc[1:]
 
         # First level ('/uniprot')
         if len(pc) == 1:
@@ -267,7 +320,7 @@ class AlphaFoldFS(fuse.Fuse):
                 elif action == 'readdir':
                     if pc[0] == 'pdb':
                         with self.sqlite as sql:
-                            return sql.get_valid_pdb_dirnames_l2(pc[1])
+                            return sql.get_valid_pdb_dirnames_l2(pc[1], version)
                     else:
                         return path_config[pc[0]]()
             # Now handle actual data requests of one sort or another
@@ -283,13 +336,13 @@ class AlphaFoldFS(fuse.Fuse):
                 elif pc[0] == 'taxonomy':
                     if action == 'readdir':
                         with self.sqlite as sql:
-                            return sql.get_uniprot_from_taxonomy(pc[1])
+                            return sql.get_uniprot_from_taxonomy(pc[1], version=version)
                     elif action == 'getattr':
                         return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
                 elif pc[0] == 'pdb':
                     if action == 'readdir':
                         with self.sqlite as sql:
-                            return sql.get_uniprot_from_pdb(pc[1])
+                            return sql.get_uniprot_from_pdb(pc[1], version=version)
                     elif action == 'getattr':
                         return LocationAwareStat(st_mode=stat.S_IFDIR | 0o555)
         # Of the form /taxonomy/taxonomy_id/uniprot or /pdb/2/D
@@ -301,13 +354,13 @@ class AlphaFoldFS(fuse.Fuse):
                 elif action == 'readdir':
                     if pc[0] == 'taxonomy':
                         with self.sqlite as sql:
-                            return sql.get_taxonomy_from_taxonomy_substring(f'{pc[1]}{pc[2]}')
+                            return sql.get_taxonomy_from_taxonomy_substring(f'{pc[1]}{pc[2]}', version=version)
                     elif pc[0] == 'uniprot':
                         with self.sqlite as sql:
-                            return sql.get_uniprot_from_uniprot_substring(f'{pc[1]}{pc[2]}')
+                            return sql.get_uniprot_from_uniprot_substring(f'{pc[1]}{pc[2]}', version=version)
                     elif pc[0] == 'pdb':
                         with self.sqlite as sql:
-                            return sql.get_pdb_from_pdb_substring(f'{pc[1]}{pc[2]}')
+                            return sql.get_pdb_from_pdb_substring(f'{pc[1]}{pc[2]}', version=version)
             if pc[0] == 'taxonomy':
                 with self.sqlite as sql:
                     stat_info = sql.get_uniprot_info(uniprot_id=pc[2])
@@ -334,10 +387,10 @@ class AlphaFoldFS(fuse.Fuse):
             if action == 'readdir':
                 if pc[0] == 'taxonomy':
                     with self.sqlite as sql:
-                        return sql.get_uniprot_from_taxonomy(pc[3])
+                        return sql.get_uniprot_from_taxonomy(pc[3], version=version)
                 elif pc[0] == 'pdb':
                     with self.sqlite as sql:
-                        return sql.get_uniprot_from_pdb(pc[3])
+                        return sql.get_uniprot_from_pdb(pc[3], version=version)
         # Of the form /pdb/2/D/2DOG/C4K3Z3
         elif len(pc) == 5:
             # At this level, it's always a uniprot id
