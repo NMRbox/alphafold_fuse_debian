@@ -267,7 +267,7 @@ class AlphaFoldFS(fuse.Fuse):
         result = self._fake_filesystem(path, action, size, offset)
         if isinstance(result, typing.Generator):
             list_version = list(result)
-            logging.debug(f'{action}: {path, size, offset, [_.name for _ in list(result)]}')
+            logging.debug(f'{action}: {path, size, offset, [_.name for _ in list_version]}')
             return (_ for _ in list_version)
         else:
             logging.debug(f'{action}: {path, size, offset, result}')
