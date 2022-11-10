@@ -185,13 +185,17 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
             cursor.execute('DROP INDEX IF EXISTS pdb_2level;')
             cursor.execute('CREATE INDEX pdb_2level ON pdb(substr(pdb_id, -3, 1));')
 
+            print("Creating taxonomy ID lookup table...")
+            cursor.execute('CREATE TABLE taxonomy_unique_tmp(taxonomy_id int PRIMARY KEY) WITHOUT ROWID;')
+            cursor.execute('INSERT INTO taxonomy_unique_tmp(taxonomy_id) SELECT DISTINCT(taxonomy_id) FROM taxonomy;')
+            print('CREATE INDEX taxon_substr ON taxonomy_unique_tmp(substr(taxonomy_id, -3, 2));')
+            cursor.execute('DROP INDEX IF EXISTS taxon_substr;')
+            cursor.execute('CREATE INDEX taxon_substr ON taxonomy_unique_tmp(substr(taxonomy_id, -3, 2));')
+
             # Taxon table indexes
             print('CREATE INDEX taxon_index ON taxonomy_tmp(taxonomy_id);')
             cursor.execute('DROP INDEX IF EXISTS taxon_index;')
             cursor.execute('CREATE INDEX taxon_index ON taxonomy_tmp(taxonomy_id);')
-            print('CREATE INDEX taxon_substr ON taxonomy_tmp(substr(taxonomy_id, -3, 2), taxonomy_id);')
-            cursor.execute('DROP INDEX IF EXISTS taxon_substr;')
-            cursor.execute('CREATE INDEX taxon_substr ON taxonomy_tmp(substr(taxonomy_id, -3, 2), taxonomy_id);')
 
             # Now prepare the versions table
             print('Preparing versions table...')
@@ -204,6 +208,8 @@ def create_or_update_sqlite(args: argparse.Namespace) -> None:
             cursor.execute('ALTER TABLE pdb_tmp RENAME TO pdb;')
             cursor.execute('DROP TABLE IF EXISTS taxonomy;')
             cursor.execute('ALTER TABLE taxonomy_tmp RENAME TO taxonomy;')
+            cursor.execute('DROP TABLE IF EXISTS taxonomy_unique;')
+            cursor.execute('ALTER TABLE taxonomy_unique_tmp RENAME TO taxonomy_unique;')
             sqlite_conn.commit()
     print("Done!")
 

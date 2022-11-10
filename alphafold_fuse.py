@@ -160,7 +160,7 @@ GROUP BY uniprot_id''', [uniprot_substring, version])
 
     def get_taxonomy_from_taxonomy_substring(self, taxonomy_substring: str, version: str):
         self.cursor.execute('''
-SELECT DISTINCT(taxonomy_id) AS taxonomy_id FROM taxonomy
+SELECT DISTINCT(taxonomy_id) AS taxonomy_id FROM taxonomy_unique
                                     LEFT JOIN files f on taxonomy.uniprot_id = f.uniprot_id
                                     WHERE substr(taxonomy_id, -3, 2) = ?
 AND f.version <= ?;''',
