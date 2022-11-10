@@ -110,12 +110,9 @@ class SQLReader:
 
     def __init__(self, sql_file_path):
         self.sql_file_path = sql_file_path
-        # from threading import Lock
-        # self.lock = Lock()
 
     def __enter__(self):
         # Open the file read-only (uri=True) and use the row factory
-        #self.lock.acquire()
         self.sql_connection = sqlite3.connect(f'file:{self.sql_file_path}', uri=True)
         self.sql_connection.row_factory = sqlite3.Row
         self.cursor = self.sql_connection.cursor()
@@ -123,7 +120,6 @@ class SQLReader:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.cursor.close()
-        #self.lock.release()
         self.sql_connection.close()
 
     def get_versions(self):
