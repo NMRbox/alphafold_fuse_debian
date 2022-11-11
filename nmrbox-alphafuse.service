@@ -1,0 +1,12 @@
+[Unit]
+Description=Mount alphafold virtual file system
+After=network.target
+
+[Service]
+ExecPreStart=/opt/nmrbox/alphafold_fuse/bin/mountcontrol 
+ExecStart=/opt/nmrbox/alphafold_fuse/bin/alphafold_fuse
+Restart=no
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
