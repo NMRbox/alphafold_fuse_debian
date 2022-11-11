@@ -1,0 +1,15 @@
+Source: nmrbox-admin-alphafold-filesystem
+Section: science
+Priority: optional
+Maintainer: Gerard Weatherby <gweatherby@uchc.edu>
+Build-Depends: debhelper-compat (= 12)
+Standards-Version: 4.4.1
+Homepage: https://www.nmrbox.org
+
+Package: nmrbox-admin-alphafold-filesystem
+Architecture: all
+Depends: ${misc:Depends}
+Description: Mount alphafold filesystem on NMRbox 
+	Mount alphafold filesystem on NMRbox 
+XB-Nmrbox-Paas: True
+XB-Nmrbox-Download: False 

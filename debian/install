@@ -1,0 +1,3 @@
+#!/usr/bin/dh-exec
+[local_file_or_directory_1] [/install/directory/1]
+[local_file_or_directory_2] [/install/directory/2]
