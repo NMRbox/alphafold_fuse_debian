@@ -10,6 +10,7 @@ import stat
 from string import ascii_uppercase, digits
 from typing import Union, Literal, Optional, Generator, List
 
+import pathlib
 import fuse
 
 # No clean way to access "open" from within the class otherwise
@@ -285,10 +286,10 @@ class AlphaFoldFS(fuse.Fuse):
         # They want the readme
         if pc[0] == 'README.md':
             if action == 'getattr':
-                with open('README.md', 'r') as readme:
+                with open(os.path.join(pathlib.Path(__file__).parent.resolve(), 'README.md'), 'rb') as readme:
                     return LocationAwareStat(st_size=len(readme.read()))
             if action == 'read':
-                with open('README.md', 'rb') as readme:
+                with open(os.path.join(pathlib.Path(__file__).parent.resolve(), 'README.md'), 'rb') as readme:
                     return _send_from_buffer(readme.read(), size, offset)
 
         # Handle the version part of the FS path
