@@ -8,23 +8,22 @@ $(IDIR):
 	#create virtual environment
 	python3.8 -m venv $(IDIR) 
 
-dist/pipmanager*whl: | $(IDIR)
+dist/alphafold_fuse*whl: | $(IDIR)
 	$(IDIR)/bin/pip install -U pip build
 	$(IDIR)/bin/python -m build .
 
 # make target that can be invoked from command line, for testing
-wheel: dist/pipmanager*whl
+wheel: dist/alphafold_fuse*whl
 
-$(IDIR)/bin/pipmanager:  dist/pipmanager*whl
-	$(IDIR)/bin/pip install --force-reinstall dist/pipmanager-*.whl
+$(IDIR)/bin/alphafold_fuse:  dist/alphafold_fuse*whl
+	$(IDIR)/bin/pip install --force-reinstall dist/alphafold_fuse-*.whl
 
-# we can't (or don't know how to) override rules because we have two debian/*install files,
-# so copy virtual environment into local directory should dh_install can find it
-pipmanager:  $(IDIR)/bin/pipmanager 
-	cp -r $(IDIR) pipmanager
+# copy virtual environment into local directory should dh_install can find it
+alphafold_fuse:  $(IDIR)/bin/alphafold_fuse
+	cp -r $(IDIR) alphafold_fuse 
 
-build: pipmanager 
+build: alphafold_fuse 
 	
 clean:
-	rm -fr $(IDIR)  pipmanager dist
+	rm -fr $(IDIR)  alphafold_fuse dist
 	
