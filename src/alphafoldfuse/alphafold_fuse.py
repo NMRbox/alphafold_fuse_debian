@@ -5,12 +5,12 @@ import functools
 import gzip
 import logging
 import os
+import pathlib
 import sqlite3
 import stat
 from string import ascii_uppercase, digits
 from typing import Union, Literal, Optional, Generator, List
 
-import pathlib
 import fuse
 
 # No clean way to access "open" from within the class otherwise
