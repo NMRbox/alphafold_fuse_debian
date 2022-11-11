@@ -19,6 +19,7 @@ set -e
 
 case "$1" in
     remove|upgrade|deconfigure)
+		systemctl disable /opt/nmrbox/alphafold_fuse/nmrbox-alphafuse.service --now
     ;;
 
     failed-upgrade)

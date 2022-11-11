@@ -20,6 +20,7 @@ set -e
 
 case "$1" in
     configure)
+		systemctl enable /opt/nmrbox/alphafold_fuse/nmrbox-alphafuse.service --now
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)
