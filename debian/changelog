@@ -1,0 +1,5 @@
+nmrbox-admin-alphafold-filesystem (1-1) unstable; urgency=medium
+
+  * Initial release (Closes: #nnnn)  <nnnn is the bug number of your ITP>
+
+ -- Gerard Weatherby <gweatherby@uchc.edu>  Thu, 10 Nov 2022 20:46:27 -0500
