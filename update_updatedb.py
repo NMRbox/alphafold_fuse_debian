@@ -35,5 +35,5 @@ with fileinput.input(args.update_config, inplace=True) as f:
             continue
 
         print(sline)
-    if sline is None:
-        raise ValueError(f"PRUNEPATHS not found in {args.update_config}")
+if pathline is None:
+    raise ValueError(f"PRUNEPATHS not found in {args.update_config}")
