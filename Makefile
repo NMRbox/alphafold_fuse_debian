@@ -25,7 +25,10 @@ alphafold_fuse:  $(IDIR)/bin/alphafold_fuse
 alphafold_fuse/nmrbox-alphafuse.service:  | alphafold_fuse 
 	cp nmrbox-alphafuse.service alphafold_fuse/
 
-build: alphafold_fuse/nmrbox-alphafuse.service 
+alphafold_fuse/update_updatedb.conf:  | alphafold_fuse 
+	cp update_updatedb.py  alphafold_fuse/
+
+build: alphafold_fuse/nmrbox-alphafuse.service alphafold_fuse/update_updatedb.conf
 	
 clean:
 	rm -fr $(IDIR)  alphafold_fuse dist

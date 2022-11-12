@@ -21,6 +21,7 @@ set -e
 case "$1" in
     configure)
 		systemctl enable /opt/nmrbox/alphafold_fuse/nmrbox-alphafuse.service --now
+		/opt/nmrbox/alphafold_fuse/update_updatedb.py /reboxitory/alphafolddb
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)
