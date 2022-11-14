@@ -22,6 +22,8 @@ if not hasattr(fuse, '__version__'):
     raise RuntimeError("You don't appear to be using the version of fuse-python specified in the requirements.")
 fuse.fuse_python_api = (0, 2)
 
+readme_path = os.path.normpath(os.path.join(pathlib.Path(__file__).parent.resolve(), '..', '..', 'README.md'))
+
 
 def get_alphanum() -> Generator[str, None, None]:
     for letter in ascii_uppercase + digits:
@@ -239,6 +241,7 @@ class AlphaFoldFS(fuse.Fuse):
         self.versions = []
         self.sqlpath = '/extras/alphafold/'
         self.verbose = None
+        self.readme = readme_path
 
     def prepare_fs(self):
         with SQLReader(self.sqlpath) as sql:
@@ -285,12 +288,11 @@ class AlphaFoldFS(fuse.Fuse):
 
         # They want the readme
         if pc[0] == 'README.md':
-            readme_path = os.path.join(pathlib.Path(__file__).parent.resolve(), '..', '..',  'README.md')
             if action == 'getattr':
-                with open(readme_path, 'rb') as readme:
+                with open(self.readme, 'rb') as readme:
                     return LocationAwareStat(st_size=len(readme.read()))
             if action == 'read':
-                with open(readme_path, 'rb') as readme:
+                with open(self.readme, 'rb') as readme:
                     return _send_from_buffer(readme.read(), size, offset)
 
         # Handle the version part of the FS path
@@ -438,6 +440,9 @@ def main():
     server.parser.add_option(mountopt="sqlpath", metavar="SQL_PATH",
                              default='/extra/alphafold/alphafold.sqlite',
                              help="Where to load metadata from [default: %default]")
+    server.parser.add_option(mountopt="readme", metavar="README_PATH",
+                             default=readme_path,
+                             help="Where to load README from. Use full path. [default: %default]")
     server.parser.add_option(mountopt="verbose",
                              default=False,
                              action='store_true',
