@@ -2,7 +2,7 @@ Source: nmrbox-admin-alphafold-filesystem
 Section: science
 Priority: optional
 Maintainer: Gerard Weatherby <gweatherby@uchc.edu>
-Build-Depends: debhelper-compat (= 12)
+Build-Depends: debhelper-compat (= 12), libfuse-dev
 Standards-Version: 4.4.1
 Homepage: https://www.nmrbox.org
 

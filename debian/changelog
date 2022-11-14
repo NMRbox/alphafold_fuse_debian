@@ -1,3 +1,9 @@
+nmrbox-admin-alphafold-filesystem (1-2) focal; urgency=medium
+
+  * Enclude mount from updatedb
+
+ -- Gerard Weatherby <gweatherby@uchc.edu>  Sat, 12 Nov 2022 07:38:02 -0500
+
 nmrbox-admin-alphafold-filesystem (1-1) unstable; urgency=medium
 
   * Initial release (Closes: #nnnn)  <nnnn is the bug number of your ITP>
