@@ -285,11 +285,12 @@ class AlphaFoldFS(fuse.Fuse):
 
         # They want the readme
         if pc[0] == 'README.md':
+            readme_path = os.path.join(pathlib.Path(__file__).parent.resolve(), '..', '..',  'README.md')
             if action == 'getattr':
-                with open(os.path.join(pathlib.Path(__file__).parent.resolve(), 'README.md'), 'rb') as readme:
+                with open(readme_path, 'rb') as readme:
                     return LocationAwareStat(st_size=len(readme.read()))
             if action == 'read':
-                with open(os.path.join(pathlib.Path(__file__).parent.resolve(), 'README.md'), 'rb') as readme:
+                with open(readme_path, 'rb') as readme:
                     return _send_from_buffer(readme.read(), size, offset)
 
         # Handle the version part of the FS path
