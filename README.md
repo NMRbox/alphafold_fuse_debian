@@ -24,14 +24,15 @@ AlphaFold source data files are structured. Alternatively, use the Python
 helper module to access the structure files in the fastest possible manner.
 2. For those who want a single structure (or some number of structures) the 
 files can be accessed using a shortcut path, bypassing the sudirectories: 
-`./uniprot/$uniprot_ID_$version.cif` where `$uniprot_ID` is replaced with a 
-UniProt ID, and `$version` is replaced with a version string. ('v3' or 'v4' 
-at the time this documentation was written.)
+`/reboxitory/alphafolddb/uniprot/$uniprot_ID_$version.cif` where `$uniprot_ID`
+is replaced with a UniProt ID, and `$version` is replaced with a version string. 
+('v3' or 'v4' at the time this documentation was written.)
 
 ### List of files and directories in this filesystem
 
-* ./README.md - This file
-* .v3/ OR .v4/ - The top level directories will indicate which versions of the
+* /reboxitory/alphafolddb/README.md - This file
+* /reboxitory/alphafolddb/v3/ OR /reboxitory/alphafolddb/v4/ - The top level
+  directories will indicate which versions of the
   AlphaFold files are available. If a given file is not available in the
   requested version, the next highest version of the file will be returned
   instead. For example, version 4 consists of just 0.5% of the files in
@@ -41,43 +42,46 @@ at the time this documentation was written.)
   would be returned, but version 3 is the first version available.) In future
   paths, this part of the path will be referred to as `$version`.
 #### By PDB
-* .`$version`/pdb/ - a directory which can be traversed to look up UniProt IDs
+* /reboxitory/alphafolddb/`$version`/pdb/ - a directory which can be traversed 
+  to look up UniProt IDs
   associated with the PDB ID. You must first go through two subdirectories
   which correspond to the third from last and second from last character in
   the PDB ID.
-    * .`$version`/pdb/2/A/ - a directory which lists all PDB IDs (which have
-      associated UniProt IDs) that have `2A` as the second and third from last
-      characters in the PDB ID. For example, this includes the ID `12AS`.
-        * .`$version`/pdb/2/A/12AS - a directory which contains all UniProt
-          IDs associated with the specified PDB ID.
-            * .`$version`/pdb/2/A/12AS/P00963_v3.cif - an example of a
-              structure file found in the directory above
+    * /reboxitory/alphafolddb/`$version`/pdb/2/A/ - a directory which lists all
+      PDB IDs (which have associated UniProt IDs) that have `2A` as the second
+      and third from last characters in the PDB ID. For example, this includes
+      the ID `12AS`.
+        * /reboxitory/alphafolddb/`$version`/pdb/2/A/12AS - a directory which
+          contains all UniProt IDs associated with the specified PDB ID.
+            * /reboxitory/alphafolddb/`$version`/pdb/2/A/12AS/P00963_v3.cif - an
+              example of a structure file found in the directory above
 #### By taxonomy ID
-* .`$version`/taxonomy/ - a directory which can be traversed to look up
-  UniProt IDs associated with the given taxonomy ID. You must first go through
-  two subdirectories which
-  correspond to the third from last and second from last character in the
-  taxonomy ID.
-    * .`$version`/taxonomy/2/3 - a directory which lists all taxonomy IDs
-      (which have associated UniProt IDs) that have `23` as the second and third
-      from last characters in the taxonomy ID. For example, this includes the
-      ID `2206232`.
-        * .`$version`/taxonomy/2/3/2022238  - a directory which contains all
-          UniProt IDs associated with the specified taxonomy ID.
-            *  .`$version`/taxonomy/2/3/2022238/A0A221S5L8_v3.cif - a structure
-               for the taxonomy ID above
+* /reboxitory/alphafolddb/`$version`/taxonomy/ - a directory which can be
+  traversed to look up UniProt IDs associated with the given taxonomy ID. You 
+  must first go through two subdirectories which correspond to the third from 
+  last and second from last character in the taxonomy ID.
+    * /reboxitory/alphafolddb/`$version`/taxonomy/2/3 - a directory which lists
+      all taxonomy IDs (which have associated UniProt IDs) that have `23` as the
+      second and third from last characters in the taxonomy ID. For example, 
+      this includes the ID `2206232`.
+        * /reboxitory/alphafolddb/`$version`/taxonomy/2/3/2022238  - a directory
+          which contains all UniProt IDs associated with the specified taxonomy ID.
+            *  /reboxitory/alphafolddb/`$version`/taxonomy/2/3/2022238/A0A221S5L8_v3.cif -
+               a structure for the taxonomy ID above
 #### By UniProt ID
-* .`$version`/uniprot/ - a directory which can be traversed to look up UniProt
+* /reboxitory/alphafolddb/`$version`/uniprot/ - a directory which can be traversed
+  to look up UniProt
   IDs associated with the given UniProt ID substrings. You must first go through
   two subdirectories which correspond to the third from last and second from
   last character in the UniProt IDs.
-    * .`$version`/uniprot/P/F - a directory which lists all UniProt IDs that
-      have `PF` as the second and third from last characters in the UniProt ID.
-      For example, this includes the ID `A0A6I3SPF8`.
-        * .`$version`/uniprot/P/F/A0A6I3SPF8_v3.cif  - an example structure
-          file found in the above directory
+    * /reboxitory/alphafolddb/`$version`/uniprot/P/F - a directory which lists
+      all UniProt IDs that have `PF` as the second and third from last characters
+      in the UniProt ID. For example, this includes the ID `A0A6I3SPF8`.
+        * /reboxitory/alphafolddb/`$version`/uniprot/P/F/A0A6I3SPF8_v3.cif  - an
+          example structure file found in the above directory
 
 #### Shortcut path
-* .`$version`/uniprot/A0A496APF7 or .`$version`/uniprot/A0A496APF7.cif - a
+* /reboxitory/alphafolddb/`$version`/uniprot/A0A496APF7 or 
+  /reboxitory/alphafolddb/`$version`/uniprot/A0A496APF7.cif - a
   direct reference to the structure for a given UniProt ID - no need to go
   through the subdirectories as shown above.
