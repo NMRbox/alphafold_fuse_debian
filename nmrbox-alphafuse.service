@@ -3,7 +3,7 @@ Description=Mount alphafold virtual file system
 After=network.target
 
 [Service]
-ExecPreStart=/opt/nmrbox/alphafold_fuse/bin/mountcontrol umount /reboxitory/alphafolddb
+ExecStartPre=/opt/nmrbox/alphafold_fuse/bin/mountcontrol umount /reboxitory/alphafolddb
 ExecStart=/opt/nmrbox/alphafold_fuse/bin/alphafold_fuse -o sqlpath=/extra/alphafold/alphafold.sqlite -o alphafold_dir=/extra/alphafold -o readme=/opt/nmrbox/alphafold_fuse/README.md -o allow_other -o ro -f -o uid=300181 -o gid=300181 -o fsname=alphafold_virtual /reboxitory/alphafolddb
 Restart=no
 KillMode=process

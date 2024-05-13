@@ -2,6 +2,8 @@
 import argparse
 import fileinput
 import logging
+import sys 
+from pathlib import Path
 """Remove mountpoint from updatedb scan"""
 
 _logger = logging.getLogger(' ')
@@ -13,6 +15,10 @@ parser.add_argument('-e', '--update-config', default='/etc/updatedb.conf')
 
 args = parser.parse_args()
 _logger.setLevel(getattr(logging, args.loglevel))
+cfile = Path(args.update_config)
+if not cfile.is_file():
+    _logger.info(f"{cfile.as_posix()} not present")
+    sys.exit(0)
 
 pathline = None
 with fileinput.input(args.update_config, inplace=True) as f:

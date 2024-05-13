@@ -1,3 +1,9 @@
+nmrbox-admin-alphafold-filesystem (1-5) focal; urgency=medium
+
+  *  typo in service file. Don't fail on missing /etc/updatedb
+
+ -- Gerard Weatherby <gweatherby@uchc.edu>  Thu, 29 Jun 2023 15:40:56 -0400
+
 nmrbox-admin-alphafold-filesystem (1-4) focal; urgency=medium
 
   * README.md newline last line 
