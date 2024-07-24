@@ -1,5 +1,5 @@
 # sudo apt-get install libfuse-dev before the following will work
-fuse-python==1.0.5
+fuse-python==1.0.8
 psutil~=5.9
 # Needed for fast date parsing in the DB loader, but not needed for the Fuse fs
 ciso8601==2.2.0

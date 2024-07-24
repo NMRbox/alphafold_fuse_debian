@@ -6,7 +6,7 @@ IDIR := /opt/nmrbox/alphafold_fuse
 
 $(IDIR):
 	#create virtual environment
-	python3.8 -m venv $(IDIR) 
+	python3.12 -m venv $(IDIR)
 
 dist/alphafold_fuse*whl: | $(IDIR)
 	$(IDIR)/bin/pip install -U pip build

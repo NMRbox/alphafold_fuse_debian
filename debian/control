@@ -8,7 +8,7 @@ Homepage: https://www.nmrbox.org
 
 Package: nmrbox-admin-alphafold-filesystem
 Architecture: all
-Depends: ${misc:Depends},mlocate
+Depends: ${misc:Depends}
 Description: Mount alphafold filesystem on NMRbox 
 	Mount alphafold filesystem on NMRbox 
 XB-Nmrbox-Paas: True
