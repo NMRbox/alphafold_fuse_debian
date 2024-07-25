@@ -1,3 +1,9 @@
+nmrbox-admin-alphafold-filesystem (1-6) focal; urgency=medium
+
+  *  Update to support Ubuntu 24.04. Remove mlocate dependency
+
+ -- Gerard Weatherby <gweatherby@uchc.edu>  Thu, 25 Jul 2024 10:29:11 -0400
+
 nmrbox-admin-alphafold-filesystem (1-5) focal; urgency=medium
 
   *  typo in service file. Don't fail on missing /etc/updatedb
